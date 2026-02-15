@@ -4,7 +4,13 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from app.config import settings
 from app.core.logging import get_logger
-from app.telegram.handlers import task_handlers, week_handlers
+from app.telegram.handlers import (
+    task_handlers,
+    week_handlers,
+    meeting_handlers,
+    digest_handlers,
+    message_handlers
+)
 
 logger = get_logger(__name__)
 
@@ -16,8 +22,15 @@ dp = Dispatcher(storage=storage)
 
 def setup_handlers():
     """Register all handlers."""
+    # Command handlers (higher priority)
     dp.include_router(task_handlers.router)
     dp.include_router(week_handlers.router)
+    dp.include_router(meeting_handlers.router)
+    dp.include_router(digest_handlers.router)
+    
+    # Message handler (lower priority, catches all messages)
+    dp.include_router(message_handlers.router)
+    
     logger.info("handlers_registered")
 
 
