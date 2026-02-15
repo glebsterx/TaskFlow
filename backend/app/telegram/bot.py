@@ -2,9 +2,12 @@
 import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from app.config import settings
 from app.core.logging import get_logger
 from app.telegram.handlers import (
+    help_handlers,
     task_handlers,
     week_handlers,
     meeting_handlers,
@@ -14,21 +17,27 @@ from app.telegram.handlers import (
 
 logger = get_logger(__name__)
 
-# Initialize bot and dispatcher
-bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
+# Initialize bot with default parse mode
+bot = Bot(
+    token=settings.TELEGRAM_BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
+)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
 
 def setup_handlers():
-    """Register all handlers."""
-    # Command handlers (higher priority)
+    """Register all handlers in priority order."""
+    # Help and menu (highest priority)
+    dp.include_router(help_handlers.router)
+    
+    # Command handlers
     dp.include_router(task_handlers.router)
     dp.include_router(week_handlers.router)
     dp.include_router(meeting_handlers.router)
     dp.include_router(digest_handlers.router)
     
-    # Message handler (lower priority, catches all messages)
+    # Message handler (lowest priority, catches all messages)
     dp.include_router(message_handlers.router)
     
     logger.info("handlers_registered")

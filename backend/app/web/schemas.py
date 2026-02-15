@@ -46,3 +46,20 @@ class StatsResponse(BaseModel):
     doing: int
     done: int
     blocked: int
+
+
+class TelegramAuthRequest(BaseModel):
+    """Telegram authentication request."""
+    id: int
+    first_name: str
+    username: Optional[str] = None
+    photo_url: Optional[str] = None
+    auth_date: int
+    hash: str
+
+
+class TokenResponse(BaseModel):
+    """Token response after authentication."""
+    access_token: str
+    token_type: str
+    user: dict

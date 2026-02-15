@@ -1,16 +1,36 @@
-"""Database connection and session management."""
+"""Database connection and session management with optimizations."""
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.pool import NullPool, StaticPool
 from app.config import settings
 
-# Create async engine
+# Create async engine with optimizations
+engine_kwargs = {
+    "echo": settings.DEBUG,
+    "future": True,
+}
+
+# SQLite specific optimizations
+if "sqlite" in settings.DATABASE_URL:
+    # Use StaticPool for SQLite to maintain single connection
+    engine_kwargs["poolclass"] = StaticPool
+    engine_kwargs["connect_args"] = {
+        "check_same_thread": False,
+        "timeout": 30,
+    }
+else:
+    # PostgreSQL/MySQL pool settings
+    engine_kwargs["pool_size"] = settings.DB_POOL_SIZE
+    engine_kwargs["max_overflow"] = settings.DB_MAX_OVERFLOW
+    engine_kwargs["pool_pre_ping"] = True
+    engine_kwargs["pool_recycle"] = 3600
+
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=settings.DEBUG,
-    future=True
+    **engine_kwargs
 )
 
-# Session factory
+# Session factory with optimizations
 AsyncSessionLocal = async_sessionmaker(
     engine,
     class_=AsyncSession,
@@ -40,3 +60,10 @@ async def init_db():
     """Initialize database - create all tables."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        
+        # SQLite specific optimizations
+        if "sqlite" in settings.DATABASE_URL:
+            await conn.execute("PRAGMA journal_mode=WAL")
+            await conn.execute("PRAGMA synchronous=NORMAL")
+            await conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
+            await conn.execute("PRAGMA temp_store=MEMORY")
