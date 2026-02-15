@@ -1,42 +1,58 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from app.core.config import settings
-from app.core.database import Base, engine
-from app.api.v1.router import api_router
+"""Main application entry point."""
+import asyncio
+import uvicorn
+from multiprocessing import Process
+from app.config import settings
+from app.core.logging import configure_logging, get_logger
+from app.core.db import init_db
+from app.telegram.bot import run_bot
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
-
-app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.VERSION,
-    description="Task management tool for small teams"
-)
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.BACKEND_CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include API routes
-app.include_router(api_router, prefix="/api")
+logger = get_logger(__name__)
 
 
-@app.get("/")
-def root():
-    """Root endpoint."""
-    return {
-        "message": "Welcome to TaskFlow API",
-        "version": settings.VERSION,
-        "docs": "/docs"
-    }
+async def startup():
+    """Application startup."""
+    configure_logging()
+    logger.info("application_starting", version=settings.VERSION)
+    
+    # Initialize database
+    await init_db()
+    logger.info("database_initialized")
 
 
-@app.get("/health")
-def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"}
+def run_api():
+    """Run FastAPI server."""
+    from app.web.app import app
+    
+    uvicorn.run(
+        app,
+        host=settings.API_HOST,
+        port=settings.API_PORT,
+        log_level="info" if settings.DEBUG else "warning"
+    )
+
+
+def main():
+    """Main entry point - run both bot and API."""
+    
+    # Run startup
+    asyncio.run(startup())
+    
+    # Start API server in separate process
+    api_process = Process(target=run_api)
+    api_process.start()
+    
+    logger.info("api_server_started", port=settings.API_PORT)
+    
+    # Run bot in main process
+    try:
+        run_bot()
+    except KeyboardInterrupt:
+        logger.info("application_shutting_down")
+    finally:
+        api_process.terminate()
+        api_process.join()
+
+
+if __name__ == "__main__":
+    main()

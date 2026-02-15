@@ -9,8 +9,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY . .
 
-# Expose port
+# Create directory for SQLite database
+RUN mkdir -p /app/data
+
+# Expose port for web API
 EXPOSE 8000
 
-# Run application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Run application (both bot and API)
+CMD ["python", "-m", "app.main"]

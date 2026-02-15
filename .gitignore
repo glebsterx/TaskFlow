@@ -17,21 +17,24 @@ dist/
 # Environment
 .env
 .env.local
-.env.production
+
+# Database
+*.db
+*.db-journal
+*.sqlite
 
 # IDE
 .vscode/
 .idea/
 *.swp
-*.swo
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Database
-*.db
-*.sqlite
-
 # Docker
 *.log
+
+# Application data
+data/
+teamflow.db

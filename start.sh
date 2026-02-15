@@ -1,11 +1,24 @@
 #!/bin/bash
 
-echo "🚀 Starting TaskFlow MVP..."
+echo "🚀 Starting TeamFlow..."
 echo ""
 
-# Check if Docker is running
+# Check Docker
 if ! docker info > /dev/null 2>&1; then
     echo "❌ Docker is not running. Please start Docker first."
+    exit 1
+fi
+
+# Check if .env exists
+if [ ! -f "backend/.env" ]; then
+    echo "⚠️  .env file not found. Creating from example..."
+    cp backend/.env.example backend/.env
+    echo ""
+    echo "📝 Please edit backend/.env and add your Telegram bot token and chat ID:"
+    echo "   TELEGRAM_BOT_TOKEN=your_token_here"
+    echo "   TELEGRAM_CHAT_ID=your_chat_id_here"
+    echo ""
+    echo "Then run this script again."
     exit 1
 fi
 
@@ -13,28 +26,23 @@ echo "📦 Building and starting containers..."
 docker-compose up --build -d
 
 echo ""
-echo "⏳ Waiting for database to be ready..."
-sleep 10
+echo "⏳ Waiting for services to start..."
+sleep 5
 
 echo ""
-echo "🌱 Seeding initial data..."
-docker-compose exec backend python seed_data.py
-
+echo "✅ TeamFlow is ready!"
 echo ""
-echo "✅ TaskFlow is ready!"
-echo ""
-echo "📍 Access the application:"
-echo "   Frontend: http://localhost:5173"
-echo "   Backend API: http://localhost:8000"
+echo "📍 Access:"
+echo "   Web UI:   http://localhost:5173"
+echo "   API:      http://localhost:8000"
 echo "   API Docs: http://localhost:8000/docs"
 echo ""
-echo "👤 Test users:"
-echo "   admin@taskflow.com / admin123"
-echo "   john@taskflow.com / john123"
-echo "   jane@taskflow.com / jane123"
+echo "📱 Telegram Bot:"
+echo "   Команды:  /task - создать задачу"
+echo "             /week - недельная доска"
 echo ""
 echo "📊 View logs:"
-echo "   docker-compose logs -f"
+echo "   docker-compose logs -f backend"
 echo ""
-echo "🛑 Stop application:"
+echo "🛑 Stop:"
 echo "   docker-compose down"
