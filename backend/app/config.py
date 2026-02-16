@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     VERSION: str = "0.3.0"
     DEBUG: bool = False
     
+    # Server
+    BASE_URL: str = "http://localhost"
+    BACKEND_PORT: int = 8180
+    FRONTEND_PORT: int = 5180
+    
     # Telegram Bot
     TELEGRAM_BOT_TOKEN: str
     TELEGRAM_CHAT_ID: int
@@ -35,6 +40,16 @@ class Settings(BaseSettings):
     # Performance
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
+    
+    @property
+    def web_url(self) -> str:
+        """Get Web UI URL."""
+        return f"{self.BASE_URL}:{self.FRONTEND_PORT}"
+    
+    @property
+    def api_url(self) -> str:
+        """Get API URL."""
+        return f"{self.BASE_URL}:{self.BACKEND_PORT}"
     
     class Config:
         env_file = ".env"

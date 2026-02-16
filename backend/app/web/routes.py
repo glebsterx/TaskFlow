@@ -6,9 +6,19 @@ from app.core.db import get_db
 from app.core.auth import verify_telegram_auth, create_access_token, get_current_user
 from app.services.task_service import TaskService
 from app.domain.enums import TaskStatus
-from app.web.schemas import TaskResponse, TaskDetailResponse, StatsResponse, TelegramAuthRequest, TokenResponse
+from app.web.schemas import TaskResponse, TaskDetailResponse, StatsResponse, TelegramAuthRequest, TokenResponse, BotInfoResponse
+from app.config import settings
 
 router = APIRouter()
+
+
+@router.get("/bot-info", response_model=BotInfoResponse)
+async def get_bot_info():
+    """Get bot information (public endpoint, no auth required)."""
+    return BotInfoResponse(
+        username=settings.TELEGRAM_BOT_USERNAME,
+        bot_name=settings.APP_NAME
+    )
 
 
 @router.post("/auth/telegram", response_model=TokenResponse)
@@ -33,7 +43,7 @@ async def get_tasks(
     status: Optional[TaskStatus] = None,
     assignee_telegram_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)  # Protected route
+    current_user: dict = Depends(get_current_user)
 ):
     """Get all tasks with optional filters. Requires authentication."""
     service = TaskService(db)
@@ -45,7 +55,7 @@ async def get_tasks(
 async def get_task(
     task_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)  # Protected route
+    current_user: dict = Depends(get_current_user)
 ):
     """Get task by ID with full details. Requires authentication."""
     service = TaskService(db)
@@ -60,7 +70,7 @@ async def get_task(
 @router.get("/tasks/week/current", response_model=List[TaskResponse])
 async def get_week_tasks(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)  # Protected route
+    current_user: dict = Depends(get_current_user)
 ):
     """Get tasks for current week. Requires authentication."""
     service = TaskService(db)
@@ -71,7 +81,7 @@ async def get_week_tasks(
 @router.get("/stats", response_model=StatsResponse)
 async def get_stats(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)  # Protected route
+    current_user: dict = Depends(get_current_user)
 ):
     """Get task statistics. Requires authentication."""
     service = TaskService(db)

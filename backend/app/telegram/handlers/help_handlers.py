@@ -1,8 +1,10 @@
 """Help and menu handlers."""
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from app.config import settings
 
 router = Router()
 
@@ -13,25 +15,20 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     
     # First row - task management
     builder.row(
-        InlineKeyboardButton(text="📝 Создать задачу", callback_data="cmd:task"),
-        InlineKeyboardButton(text="📅 Недельная доска", callback_data="cmd:week")
+        InlineKeyboardButton(text="📝 Создать задачу", callback_data="menu:task"),
+        InlineKeyboardButton(text="📅 Недельная доска", callback_data="menu:week")
     )
     
     # Second row - meetings and digest
     builder.row(
-        InlineKeyboardButton(text="🤝 Фиксация встречи", callback_data="cmd:meeting"),
-        InlineKeyboardButton(text="📊 Дайджест", callback_data="cmd:digest")
+        InlineKeyboardButton(text="🤝 Фиксация встречи", callback_data="menu:meeting"),
+        InlineKeyboardButton(text="📊 Дайджест", callback_data="menu:digest")
     )
     
     # Third row - lists
     builder.row(
-        InlineKeyboardButton(text="📋 История встреч", callback_data="cmd:meetings"),
-        InlineKeyboardButton(text="⏰ Просроченные", callback_data="cmd:overdue")
-    )
-    
-    # Fourth row - help
-    builder.row(
-        InlineKeyboardButton(text="❓ Помощь", callback_data="cmd:help")
+        InlineKeyboardButton(text="📋 История встреч", callback_data="menu:meetings"),
+        InlineKeyboardButton(text="⏰ Просроченные", callback_data="menu:overdue")
     )
     
     return builder.as_markup()
@@ -41,8 +38,11 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
 async def cmd_start(message: Message):
     """Handle /start command."""
     await message.answer(
-        f"👋 Привет! Я **TeamFlow** - бот для управления задачами команды.\n\n"
-        f"Выберите действие:",
+        f"👋 **Привет!** Я TeamFlow - бот для управления задачами.\n\n"
+        f"Выберите действие из меню ниже или используйте команды:\n"
+        f"• /task - создать задачу\n"
+        f"• /week - недельная доска\n"
+        f"• /help - справка",
         reply_markup=get_main_menu_keyboard(),
         parse_mode="Markdown"
     )
@@ -52,8 +52,7 @@ async def cmd_start(message: Message):
 async def cmd_menu(message: Message):
     """Show main menu."""
     await message.answer(
-        "📱 **Главное меню TeamFlow**\n\n"
-        "Выберите действие:",
+        "📱 **Главное меню TeamFlow**\n\nВыберите действие:",
         reply_markup=get_main_menu_keyboard(),
         parse_mode="Markdown"
     )
@@ -62,33 +61,32 @@ async def cmd_menu(message: Message):
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     """Show help message."""
-    help_text = """
+    help_text = f"""
 🤖 **TeamFlow Bot - Справка**
 
 **📝 Управление задачами:**
-• `/task` или кнопка - создать новую задачу
-• `/week` - показать недельную доску
-• Напишите задачу в чат - бот предложит создать её автоматически
+• /task - создать новую задачу
+• /week - показать недельную доску
 
 **🤝 Встречи:**
-• `/meeting` - зафиксировать результаты встречи
-• `/meetings` - показать историю встреч за месяц
+• /meeting - зафиксировать результаты встречи
+• /meetings - показать историю встреч
 
 **📊 Аналитика:**
-• `/digest` - еженедельный дайджест
-• `/overdue` - список просроченных задач
+• /digest - еженедельный дайджест
+• /overdue - список просроченных задач
 
-**💡 Советы:**
-• Упоминайте @username для автоназначения исполнителя
-• Указывайте даты: "завтра", "в пятницу", "через 3 дня"
-• Используйте inline кнопки для быстрой работы
+**🎯 Быстрый доступ:**
+• /menu - главное меню с кнопками
 
-**🔧 Другое:**
-• `/menu` - главное меню
-• `/help` - эта справка
+**💡 Автоматика:**
+Просто напишите в чат задачу с @упоминанием, 
+и бот предложит создать её автоматически!
+
+Пример: "@john проверить API до пятницы"
 
 **📱 Web интерфейс:**
-Откройте http://your-server:3333 для просмотра задач
+{settings.web_url}
 """
     
     await message.answer(
@@ -98,39 +96,56 @@ async def cmd_help(message: Message):
     )
 
 
-# Callback handlers for menu buttons
-from aiogram import F
-from aiogram.types import CallbackQuery
+# Import handlers for triggering from menu
+from app.telegram.handlers import task_handlers, week_handlers, meeting_handlers, digest_handlers
 
 
-@router.callback_query(F.data.startswith("cmd:"))
+@router.callback_query(F.data.startswith("menu:"))
 async def handle_menu_callback(callback: CallbackQuery):
-    """Handle menu button callbacks."""
+    """Handle menu button callbacks - trigger actual handlers."""
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    
     action = callback.data.split(":")[1]
     
-    if action == "help":
-        await cmd_help(callback.message)
-        await callback.answer()
-        return
+    # Answer callback immediately
+    await callback.answer()
     
-    # For other commands, send the command as message
-    command_map = {
-        "task": "/task",
-        "week": "/week",
-        "meeting": "/meeting",
-        "meetings": "/meetings",
-        "digest": "/digest",
-        "overdue": "/overdue",
-    }
+    # Create message object for handlers
+    message = callback.message
     
-    if action in command_map:
-        # Create a fake message to trigger command handler
-        await callback.answer(f"Выполняю команду {command_map[action]}...")
-        
-        # Send command hint
-        await callback.message.answer(
-            f"Выполняю команду `{command_map[action]}`",
-            parse_mode="Markdown"
+    # Route to appropriate handler
+    if action == "task":
+        # For task, we need FSM context
+        from app.telegram.bot import dp, bot
+        storage = dp.storage
+        key = StorageKey(
+            bot_id=bot.id,
+            chat_id=message.chat.id,
+            user_id=callback.from_user.id
         )
-    else:
-        await callback.answer("Команда не найдена")
+        state = FSMContext(storage=storage, key=key)
+        await task_handlers.cmd_task(message, state)
+        
+    elif action == "week":
+        await week_handlers.cmd_week(message)
+        
+    elif action == "meeting":
+        from app.telegram.bot import dp, bot
+        storage = dp.storage
+        key = StorageKey(
+            bot_id=bot.id,
+            chat_id=message.chat.id,
+            user_id=callback.from_user.id
+        )
+        state = FSMContext(storage=storage, key=key)
+        await meeting_handlers.cmd_meeting(message, state)
+        
+    elif action == "meetings":
+        await meeting_handlers.cmd_meetings_list(message)
+        
+    elif action == "digest":
+        await digest_handlers.cmd_digest(message)
+        
+    elif action == "overdue":
+        await digest_handlers.cmd_overdue(message)

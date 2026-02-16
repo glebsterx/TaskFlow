@@ -63,3 +63,9 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str
     user: dict
+
+
+class BotInfoResponse(BaseModel):
+    """Bot information response (public)."""
+    username: str
+    bot_name: str

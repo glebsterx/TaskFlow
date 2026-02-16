@@ -11,7 +11,7 @@ services:
     volumes:
       - teamflow-data:/app/data
     ports:
-      - "8180:8000"
+      - "${BACKEND_PORT:-8180}:8000"
     restart: unless-stopped
     command: python -m app.main
     healthcheck:
@@ -28,16 +28,13 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: teamflow-frontend
-    volumes:
-      - ./frontend/src:/app/src:ro
-      - /app/node_modules
     ports:
-      - "5180:5173"
+      - "${FRONTEND_PORT:-5180}:5173"
     depends_on:
       backend:
         condition: service_healthy
     environment:
-      - VITE_API_URL=http://localhost:8180
+      - VITE_API_URL=${BASE_URL:-http://localhost}:${BACKEND_PORT:-8180}
     restart: unless-stopped
     networks:
       - teamflow-network
