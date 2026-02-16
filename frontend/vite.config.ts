@@ -10,6 +10,7 @@ export default defineConfig({
     strictPort: true,
     // Fix for "Blocked request" error
     allowedHosts: [
+      '.example.com',
       'localhost',
       '127.0.0.1'
     ]

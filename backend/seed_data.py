@@ -22,7 +22,7 @@ def seed_users():
     users = [
         User(
             id=uuid.uuid4(),
-            email="admin@taskflow.com",
+            email="admin@teamflow.com",
             username="admin",
             hashed_password=get_password_hash("admin123"),
             full_name="Admin User",
@@ -30,7 +30,7 @@ def seed_users():
         ),
         User(
             id=uuid.uuid4(),
-            email="john@taskflow.com",
+            email="john@teamflow.com",
             username="john",
             hashed_password=get_password_hash("john123"),
             full_name="John Doe",
@@ -38,7 +38,7 @@ def seed_users():
         ),
         User(
             id=uuid.uuid4(),
-            email="jane@taskflow.com",
+            email="jane@teamflow.com",
             username="jane",
             hashed_password=get_password_hash("jane123"),
             full_name="Jane Smith",
@@ -103,9 +103,9 @@ def seed_users():
     
     print("✅ Database seeded successfully!")
     print("\nTest users created:")
-    print("  admin@taskflow.com / admin123")
-    print("  john@taskflow.com / john123")
-    print("  jane@taskflow.com / jane123")
+    print("  admin@teamflow.com / admin123")
+    print("  john@teamflow.com / john123")
+    print("  jane@teamflow.com / jane123")
 
 if __name__ == "__main__":
     seed_users()

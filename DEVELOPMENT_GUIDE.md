@@ -1,4 +1,4 @@
-# Руководство по развитию TaskFlow
+# Руководство по развитию TeamFlow
 
 ## Текущая архитектура MVP
 
@@ -180,7 +180,7 @@ def get_user_tasks(user_id: UUID):
 # Для отправки email, генерации отчётов
 from celery import Celery
 
-celery_app = Celery('taskflow')
+celery_app = Celery('teamflow')
 
 @celery_app.task
 def send_notification_email(user_id, task_id):

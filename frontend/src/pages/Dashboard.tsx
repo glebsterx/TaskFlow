@@ -28,11 +28,6 @@ interface TelegramUser {
   username?: string;
 }
 
-interface BotInfo {
-  username: string;
-  bot_name: string;
-}
-
 // Declare global Telegram widget callback
 declare global {
   interface Window {
@@ -46,16 +41,26 @@ const Dashboard: React.FC = () => {
   const [user, setUser] = useState<TelegramUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [botUsername, setBotUsername] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch bot info first (no auth required)
   useEffect(() => {
+    console.log('Fetching bot info from:', `${API_URL}/api/bot-info`);
+    
     axios.get(`${API_URL}/api/bot-info`)
       .then(res => {
+        console.log('Bot info received:', res.data);
         setBotUsername(res.data.username);
-        console.log('Bot username loaded:', res.data.username);
+        setError(null);
       })
       .catch(err => {
         console.error('Failed to load bot info:', err);
+        console.error('Error details:', {
+          message: err.message,
+          response: err.response?.data,
+          status: err.response?.status
+        });
+        setError(`Не удалось подключиться к боту: ${err.message}`);
       });
   }, []);
 
@@ -143,6 +148,44 @@ const Dashboard: React.FC = () => {
     refetchInterval: 5000,
   });
 
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full">
+          <div className="text-center mb-6">
+            <div className="text-6xl mb-4">❌</div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Ошибка подключения</h1>
+          </div>
+          
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <p className="text-sm text-red-800">{error}</p>
+          </div>
+
+          <div className="space-y-2 text-sm text-gray-600">
+            <p><strong>Проверьте:</strong></p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Backend запущен на {API_URL}</li>
+              <li>CORS настроен правильно</li>
+              <li>TELEGRAM_BOT_USERNAME в .env</li>
+            </ul>
+          </div>
+
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-6 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            🔄 Попробовать снова
+          </button>
+
+          <div className="mt-4 text-xs text-gray-400 text-center">
+            <p>API URL: {API_URL}</p>
+            <p>Откройте консоль браузера (F12) для деталей</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (isLoading || !botUsername) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -150,6 +193,9 @@ const Dashboard: React.FC = () => {
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mb-4"></div>
           <p className="text-gray-600">
             {!botUsername ? 'Подключение к боту...' : 'Загрузка...'}
+          </p>
+          <p className="text-xs text-gray-400 mt-2">
+            API: {API_URL}
           </p>
         </div>
       </div>
@@ -170,10 +216,10 @@ const Dashboard: React.FC = () => {
             <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
               <p className="text-sm text-green-800 font-medium flex items-center">
                 <span className="mr-2">✅</span>
-                Подключение к боту настроено автоматически
+                Подключено к боту
               </p>
               <p className="text-xs text-green-600 mt-1">
-                Bot: @{botUsername}
+                @{botUsername}
               </p>
             </div>
           </div>
@@ -191,7 +237,7 @@ const Dashboard: React.FC = () => {
 
           <div className="mt-6 pt-6 border-t border-gray-200">
             <p className="text-xs text-gray-400 text-center">
-              TeamFlow v0.3.0 • Никаких ручных настроек
+              TeamFlow v0.3.1
             </p>
           </div>
         </div>

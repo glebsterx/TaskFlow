@@ -45,7 +45,7 @@ sed -i 's/pytest==8.0.0/pytest==7.4.4/' requirements.txt
 ```
 
 Или скачайте **стабильный архив** где всё уже исправлено:
-`taskflow-production-v0.3.0-stable.tar.gz`
+`teamflow-production-v0.3.0-stable.tar.gz`
 
 ## Пересборка
 

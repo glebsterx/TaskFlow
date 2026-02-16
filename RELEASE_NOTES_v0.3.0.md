@@ -77,7 +77,7 @@ PRAGMA temp_store=MEMORY;
 
 ### 8. Улучшена структура ✅
 ```
-taskflow-production/
+teamflow-production/
 ├── backend/
 │   ├── app/
 │   │   ├── core/
@@ -187,8 +187,8 @@ docker-compose up -d --build
 
 ```bash
 # 1. Распакуйте
-tar -xzf taskflow-production-v0.3.0.tar.gz
-cd taskflow-production
+tar -xzf teamflow-production-v0.3.0.tar.gz
+cd teamflow-production
 
 # 2. Настройте .env
 cp backend/.env.example backend/.env
@@ -265,4 +265,4 @@ http://localhost:3333
 ---
 
 **TeamFlow v0.3.0 - Production-Ready** ✨  
-**GitHub:** https://github.com/glebsterx/TaskFlow
+**GitHub:** https://github.com/glebsterx/TeamFlow

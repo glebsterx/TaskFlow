@@ -1,6 +1,7 @@
 """Application configuration."""
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -8,7 +9,7 @@ class Settings(BaseSettings):
     
     # Application
     APP_NAME: str = "TeamFlow"
-    VERSION: str = "0.3.0"
+    VERSION: str = "0.3.1"
     DEBUG: bool = False
     
     # Server
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
     
     # Telegram Bot
     TELEGRAM_BOT_TOKEN: str
-    TELEGRAM_CHAT_ID: int
+    TELEGRAM_CHAT_ID: Optional[int] = None  # Optional - bot works in all chats
     TELEGRAM_BOT_USERNAME: str = ""
     
     # Database (with async driver)

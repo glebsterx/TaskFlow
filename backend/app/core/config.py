@@ -4,12 +4,12 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     # App
-    APP_NAME: str = "TaskFlow"
+    APP_NAME: str = "TeamFlow"
     VERSION: str = "1.0.0"
     DEBUG: bool = True
     
     # Database
-    DATABASE_URL: str = "postgresql://taskflow:taskflow_pass@db:5432/taskflow_db"
+    DATABASE_URL: str = "postgresql://teamflow:teamflow_pass@db:5432/teamflow_db"
     
     # Security
     SECRET_KEY: str = "your-secret-key-change-in-production"

@@ -38,7 +38,7 @@ export const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h2 className="text-center text-3xl font-bold text-gray-900">TaskFlow</h2>
+          <h2 className="text-center text-3xl font-bold text-gray-900">TeamFlow</h2>
           <p className="mt-2 text-center text-gray-600">Sign in to your account</p>
         </div>
         
