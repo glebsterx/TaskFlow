@@ -15,44 +15,46 @@ echo ""
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
-# Показываем текущие настройки
+# Текущая конфигурация
 if [ -f ".env" ]; then
     echo -e "${YELLOW}📋 Текущая конфигурация:${NC}"
-    cat .env 2>/dev/null | grep -v "^#" | grep -v "^$"
+    cat .env | grep -v "^#" | grep -v "^$"
     echo ""
 fi
 
-# Выбор режима
-echo -e "${YELLOW}🔧 Режим развертывания:${NC}"
-echo "1) Development (с hot reload, volume mounts)"
-echo "2) Production (полная сборка)"
-echo "3) Local network (без Telegram auth)"
+# Режим
+echo -e "${YELLOW}🔧 Режим:${NC}"
+echo "  1) Development  - volume mounts, изменения без пересборки"
+echo "  2) Production   - полная сборка образов"
 read -p "Выберите [1]: " DEPLOY_MODE
 DEPLOY_MODE=${DEPLOY_MODE:-1}
 
-# Определяем compose файл
 if [ "$DEPLOY_MODE" = "1" ]; then
     COMPOSE_FILE="docker-compose.dev.yml"
-    echo -e "${GREEN}✓ Development режим${NC}"
-elif [ "$DEPLOY_MODE" = "3" ]; then
-    COMPOSE_FILE="docker-compose.yml"
-    echo -e "${YELLOW}⚠ Local network (без авторизации)${NC}"
+    echo -e "${GREEN}✓ Development режим (hot reload)${NC}"
 else
     COMPOSE_FILE="docker-compose.yml"
     echo -e "${GREEN}✓ Production режим${NC}"
 fi
 
-# URL настройки
+# URL
 echo ""
-echo -e "${YELLOW}🌐 Настройка URL:${NC}"
-echo "Примеры:"
-echo "  - http://localhost (локально)"
-echo "  - http://192.168.0.3 (локальная сеть)"  
-echo "  - http://tf.example.com (домен без порта)"
-echo "  - http://example.com (домен)"
+echo -e "${YELLOW}🌐 URL сервера:${NC}"
+echo "  Примеры: http://192.168.0.3  /  http://tf.example.com"
 
-read -p "BASE_URL [http://localhost]: " BASE_URL
-BASE_URL=${BASE_URL:-http://localhost}
+CURRENT_URL=""
+[ -f ".env" ] && CURRENT_URL=$(grep "^BASE_URL=" .env 2>/dev/null | cut -d'=' -f2)
+
+if [ -n "$CURRENT_URL" ]; then
+    read -p "BASE_URL [${CURRENT_URL}]: " BASE_URL
+    BASE_URL=${BASE_URL:-$CURRENT_URL}
+else
+    read -p "BASE_URL [http://localhost]: " BASE_URL
+    BASE_URL=${BASE_URL:-http://localhost}
+fi
+
+# Убираем trailing slash
+BASE_URL=$(echo "$BASE_URL" | sed 's:/*$::')
 
 read -p "Backend порт [8180]: " BACKEND_PORT
 BACKEND_PORT=${BACKEND_PORT:-8180}
@@ -60,99 +62,64 @@ BACKEND_PORT=${BACKEND_PORT:-8180}
 read -p "Frontend порт [5180]: " FRONTEND_PORT
 FRONTEND_PORT=${FRONTEND_PORT:-5180}
 
-# Telegram Token
+# Telegram
 echo ""
 echo -e "${YELLOW}🤖 Telegram Bot:${NC}"
 
 CURRENT_TOKEN=""
-if [ -f "backend/.env" ]; then
-    CURRENT_TOKEN=$(grep "^TELEGRAM_BOT_TOKEN=" backend/.env 2>/dev/null | cut -d'=' -f2)
-fi
+[ -f "backend/.env" ] && CURRENT_TOKEN=$(grep "^TELEGRAM_BOT_TOKEN=" backend/.env 2>/dev/null | cut -d'=' -f2)
 
 if [ -n "$CURRENT_TOKEN" ]; then
     echo -e "${GREEN}Текущий токен: ${CURRENT_TOKEN:0:15}...${NC}"
-    read -p "Использовать текущий токен? (y/n) [y]: " USE_CURRENT
+    read -p "Использовать текущий? (y/n) [y]: " USE_CURRENT
     USE_CURRENT=${USE_CURRENT:-y}
-    
-    if [ "$USE_CURRENT" = "y" ]; then
-        BOT_TOKEN="$CURRENT_TOKEN"
-    else
-        read -p "Новый Telegram Bot Token: " BOT_TOKEN
-    fi
+    [ "$USE_CURRENT" != "y" ] && read -p "Новый токен: " BOT_TOKEN || BOT_TOKEN="$CURRENT_TOKEN"
 else
     read -p "Telegram Bot Token (@BotFather): " BOT_TOKEN
 fi
 
-if [ -z "$BOT_TOKEN" ]; then
-    echo -e "${RED}❌ Bot Token обязателен!${NC}"
-    exit 1
-fi
+[ -z "$BOT_TOKEN" ] && { echo -e "${RED}❌ Token обязателен!${NC}"; exit 1; }
 
-# Получаем bot username
-echo "📡 Получаю информацию о боте..."
+echo "📡 Получаю данные бота..."
 BOT_INFO=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getMe")
 BOT_USERNAME=$(echo "$BOT_INFO" | grep -o '"username":"[^"]*' | cut -d'"' -f4)
 
-if [ -z "$BOT_USERNAME" ]; then
-    echo -e "${RED}❌ Не удалось получить username бота!${NC}"
-    echo "Проверьте токен или попробуйте позже."
-    exit 1
-fi
-
+[ -z "$BOT_USERNAME" ] && { echo -e "${RED}❌ Неверный токен!${NC}"; exit 1; }
 echo -e "${GREEN}✓ Бот: @${BOT_USERNAME}${NC}"
 
-# Создаем конфигурацию
-echo ""
-echo -e "${YELLOW}📝 Создание конфигурации...${NC}"
+# Извлекаем домен (без trailing slash)
+DOMAIN=$(echo "$BASE_URL" | sed 's|https*://||' | sed 's:/*$::' | cut -d':' -f1)
 
-# Корневой .env
+# Создаём конфиги
+echo ""
+echo -e "${YELLOW}📝 Конфигурация...${NC}"
+
 cat > .env << EOF
 BACKEND_PORT=${BACKEND_PORT}
 FRONTEND_PORT=${FRONTEND_PORT}
 BASE_URL=${BASE_URL}
 EOF
 
-# Frontend .env
-# Убираем trailing slash из BASE_URL если есть
-BASE_URL_CLEAN=$(echo "$BASE_URL" | sed 's:/*$::')
-
 cat > frontend/.env << EOF
-VITE_API_URL=${BASE_URL_CLEAN}:${BACKEND_PORT}
+VITE_API_URL=${BASE_URL}:${BACKEND_PORT}
 EOF
 
-# Извлекаем домен из BASE_URL для vite.config.ts
-DOMAIN=$(echo "$BASE_URL" | sed 's|https*://||' | cut -d':' -f1)
-
-# Обновляем vite.config.ts с allowedHosts
 cat > frontend/vite.config.ts << EOFVITE
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
-    allowedHosts: [
-      '${DOMAIN}',
-      '.${DOMAIN}',
-      'localhost',
-      '127.0.0.1'
-    ]
-  },
-  preview: {
-    host: '0.0.0.0',
-    port: 5173,
+    allowedHosts: ['${DOMAIN}', 'localhost', '127.0.0.1']
   }
 })
 EOFVITE
 
-echo -e "${GREEN}✓ Vite config обновлен (allowedHosts: ${DOMAIN})${NC}"
-
-# Backend .env
-SECRET_KEY=$(openssl rand -hex 32 2>/dev/null || echo "dev-secret-key-$(date +%s)")
+SECRET_KEY=$(openssl rand -hex 32 2>/dev/null || echo "dev-secret-$(date +%s)")
 
 cat > backend/.env << EOF
 APP_NAME=TeamFlow
@@ -177,72 +144,42 @@ DB_POOL_SIZE=5
 DB_MAX_OVERFLOW=10
 EOF
 
-echo -e "${GREEN}✓ Конфигурация создана${NC}"
+echo -e "${GREEN}✓ Конфиги созданы${NC}"
 
 # Docker
 echo ""
 echo -e "${YELLOW}🐳 Docker...${NC}"
 
-if ! command -v docker &> /dev/null; then
-    echo -e "${RED}❌ Docker не установлен!${NC}"
-    exit 1
-fi
-
-# Очистка
-echo "Остановка старых контейнеров..."
 docker-compose -f $COMPOSE_FILE down 2>/dev/null || true
 
-if [ "$DEPLOY_MODE" != "1" ]; then
-    echo "Очистка образов..."
+if [ "$DEPLOY_MODE" = "2" ]; then
     docker rm -f teamflow-backend teamflow-frontend 2>/dev/null || true
     docker rmi teamflow_backend teamflow_frontend 2>/dev/null || true
-fi
-
-# Сборка
-echo ""
-echo -e "${YELLOW}🔨 Сборка...${NC}"
-
-if [ "$DEPLOY_MODE" = "1" ]; then
-    echo "(Development: быстрая сборка с volume mounts)"
-    docker-compose -f $COMPOSE_FILE up --build -d
-else
-    echo "(Production: полная пересборка)"
+    echo "Сборка (может занять несколько минут)..."
     docker-compose -f $COMPOSE_FILE build --no-cache
-    docker-compose -f $COMPOSE_FILE up -d
 fi
 
-# Ожидание
-echo ""
-echo "⏳ Ожидание запуска..."
-sleep 5
+echo "Запуск..."
+docker-compose -f $COMPOSE_FILE up -d
 
-# Статус
+sleep 5
 echo ""
 docker-compose -f $COMPOSE_FILE ps
 
-# Финал
 echo ""
 echo -e "${GREEN}╔═══════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║       🎉 TeamFlow запущен! 🎉        ║${NC}"
 echo -e "${GREEN}╚═══════════════════════════════════════╝${NC}"
 echo ""
-echo -e "${BLUE}📍 Доступ:${NC}"
-echo "   Web UI:   ${BASE_URL}:${FRONTEND_PORT}"
-echo "   Backend:  ${BASE_URL}:${BACKEND_PORT}"
+echo -e "${BLUE}Web UI:  ${BASE_URL}:${FRONTEND_PORT}${NC}"
+echo -e "${BLUE}API:     ${BASE_URL}:${BACKEND_PORT}${NC}"
+echo -e "${BLUE}Bot:     @${BOT_USERNAME}${NC}"
 echo ""
-echo -e "${BLUE}🤖 Telegram:${NC}"
-echo "   Bot: @${BOT_USERNAME}"
-echo "   Добавьте в чат и отправьте: /start"
-echo ""
-
-if [ "$DEPLOY_MODE" = "3" ]; then
-    echo -e "${YELLOW}⚠️  Telegram авторизация не будет работать в локальной сети${NC}"
-    echo "   Используйте VPN или публичный домен для авторизации"
-    echo ""
+echo -e "${YELLOW}📝 После изменений кода:${NC}"
+if [ "$DEPLOY_MODE" = "1" ]; then
+    echo "  Backend:  docker restart teamflow-backend"
+    echo "  Frontend: docker restart teamflow-frontend"
+else
+    echo "  docker-compose up --build -d"
 fi
-
-echo -e "${BLUE}📝 Команды:${NC}"
-echo "   Логи:    docker-compose -f $COMPOSE_FILE logs -f"
-echo "   Рестарт: docker-compose -f $COMPOSE_FILE restart"
-echo "   Стоп:    docker-compose -f $COMPOSE_FILE down"
 echo ""

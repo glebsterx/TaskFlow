@@ -1,107 +1,77 @@
-"""Telegram authentication for Web UI."""
-import hashlib
-import hmac
-from typing import Optional
+"""Authentication and password utilities."""
 from datetime import datetime, timedelta
-from fastapi import HTTPException, Depends, Header
-from jose import JWTError, jwt
+from typing import Optional
+from passlib.context import CryptContext
+import jwt
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.config import settings
-from app.core.logging import get_logger
+from app.domain.user import User
 
-logger = get_logger(__name__)
-
-SECRET_KEY = settings.SECRET_KEY if hasattr(settings, 'SECRET_KEY') else settings.TELEGRAM_BOT_TOKEN
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def verify_telegram_auth(auth_data: dict) -> bool:
-    """
-    Verify Telegram authentication data.
-    
-    Args:
-        auth_data: Dict with id, first_name, username, photo_url, auth_date, hash
-    
-    Returns:
-        True if authentication is valid
-    """
-    if not auth_data or 'hash' not in auth_data:
-        return False
-    
-    check_hash = auth_data.pop('hash')
-    
-    # Create data check string
-    data_check_arr = [f"{k}={v}" for k, v in sorted(auth_data.items())]
-    data_check_string = '\n'.join(data_check_arr)
-    
-    # Calculate hash
-    secret_key = hashlib.sha256(settings.TELEGRAM_BOT_TOKEN.encode()).digest()
-    calculated_hash = hmac.new(
-        secret_key,
-        data_check_string.encode(),
-        hashlib.sha256
-    ).hexdigest()
-    
-    # Check if hash matches
-    if calculated_hash != check_hash:
-        return False
-    
-    # Check if auth_date is not too old (1 day)
-    auth_date = int(auth_data.get('auth_date', 0))
-    current_timestamp = datetime.utcnow().timestamp()
-    
-    if current_timestamp - auth_date > 86400:  # 24 hours
-        return False
-    
-    return True
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against a hash."""
+    return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(telegram_user: dict) -> str:
-    """Create JWT access token for authenticated user."""
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+def get_password_hash(password: str) -> str:
+    """Hash a password."""
+    return pwd_context.hash(password)
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Create JWT access token."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(days=30)
     
-    to_encode = {
-        "sub": str(telegram_user['id']),
-        "username": telegram_user.get('username', ''),
-        "first_name": telegram_user.get('first_name', ''),
-        "exp": expire
-    }
-    
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
     return encoded_jwt
 
 
-def verify_token(authorization: Optional[str] = Header(None)) -> dict:
-    """Verify JWT token from Authorization header."""
-    if not authorization:
-        raise HTTPException(
-            status_code=401,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
+def decode_token(token: str) -> Optional[dict]:
+    """Decode JWT token."""
     try:
-        scheme, token = authorization.split()
-        if scheme.lower() != 'bearer':
-            raise HTTPException(status_code=401, detail="Invalid authentication scheme")
-        
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
-        
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        
-        return {
-            "id": int(user_id),
-            "username": payload.get("username"),
-            "first_name": payload.get("first_name")
-        }
-    except (ValueError, JWTError) as e:
-        logger.warning("token_verification_failed", error=str(e))
-        raise HTTPException(status_code=401, detail="Invalid token")
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        return payload
+    except jwt.PyJWTError:
+        return None
 
 
-# Dependency for protected routes
-async def get_current_user(user: dict = Depends(verify_token)) -> dict:
-    """Get current authenticated user."""
+async def authenticate_user(db: AsyncSession, username: str, password: str) -> Optional[User]:
+    """Authenticate user by username and password."""
+    result = await db.execute(select(User).where(User.username == username))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        return None
+    if not verify_password(password, user.hashed_password):
+        return None
+    
+    return user
+
+
+async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User]:
+    """Get user by username."""
+    result = await db.execute(select(User).where(User.username == username))
+    return result.scalar_one_or_none()
+
+
+async def create_user(db: AsyncSession, username: str, password: str, email: Optional[str] = None, is_admin: bool = False) -> User:
+    """Create a new user."""
+    hashed_password = get_password_hash(password)
+    user = User(
+        username=username,
+        email=email,
+        hashed_password=hashed_password,
+        is_admin=is_admin,
+        is_active=True
+    )
+    db.add(user)
+    await db.flush()
     return user

@@ -1,21 +1,35 @@
 """FastAPI web application."""
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+import time
 from app.config import settings
 from app.web.routes import router as api_router
 
 app = FastAPI(
     title="TeamFlow API",
     version=settings.VERSION,
-    description="Read-only API for TeamFlow task management"
+    description="TeamFlow API for task management"
 )
 
-# CORS
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    print(f"[REQUEST] {request.method} {request.url.path}")
+    
+    response = await call_next(request)
+    
+    process_time = time.time() - start_time
+    print(f"[RESPONSE] {request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
+    
+    return response
+
+# CORS - allow all for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origins=["*"],  # Разрешаем всё для отладки
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 

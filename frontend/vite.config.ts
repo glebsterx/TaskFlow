@@ -1,22 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
-    // Fix for "Blocked request" error
-    allowedHosts: [
-      '.example.com',
-      'localhost',
-      '127.0.0.1'
-    ]
-  },
-  preview: {
-    host: '0.0.0.0',
-    port: 5173,
+    allowedHosts: ['192.168.0.3', 'localhost', '127.0.0.1']
   }
 })

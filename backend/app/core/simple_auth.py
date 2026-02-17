@@ -38,7 +38,3 @@ def verify_simple_token(token: str) -> Optional[str]:
         return payload.get("sub")
     except jwt.PyJWTError:
         return None
-
-
-# Default password hash for "teamflow" - CHANGE IN PRODUCTION!
-DEFAULT_PASSWORD_HASH = "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYqNk0fGzGK"

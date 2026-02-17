@@ -9,8 +9,8 @@ services:
     env_file:
       - ./backend/.env
     volumes:
-      - ./backend/app:/app/app:ro  # Mount code for hot reload
-      - teamflow-data:/app/data
+      - ./backend/app:/app/app    # Hot reload для кода
+      - teamflow-data:/app/data   # Данные
     ports:
       - "${BACKEND_PORT:-8180}:8000"
     restart: unless-stopped
@@ -24,8 +24,9 @@ services:
       dockerfile: Dockerfile
     container_name: teamflow-frontend
     volumes:
-      - ./frontend/src:/app/src:ro  # Mount src for hot reload
-      - /app/node_modules
+      - ./frontend/src:/app/src           # Hot reload для кода
+      - ./frontend/.env:/app/.env         # Переменные окружения
+      - /app/node_modules                 # node_modules из контейнера
     ports:
       - "${FRONTEND_PORT:-5180}:5173"
     depends_on:

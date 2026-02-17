@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 
@@ -22,141 +22,48 @@ interface Stats {
   blocked: number;
 }
 
+const statusColors: Record<string, string> = {
+  TODO: 'bg-gray-100 text-gray-800 border-gray-300',
+  DOING: 'bg-blue-100 text-blue-800 border-blue-300',
+  DONE: 'bg-green-100 text-green-800 border-green-300',
+  BLOCKED: 'bg-red-100 text-red-800 border-red-300',
+};
+
+const statusEmoji: Record<string, string> = {
+  TODO: '📝',
+  DOING: '🔄',
+  DONE: '✅',
+  BLOCKED: '🚫',
+};
+
 const Dashboard: React.FC = () => {
   const [filter, setFilter] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
-  const [password, setPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError('');
-    setIsLoading(true);
-
-    try {
-      const res = await axios.post(`${API_URL}/api/auth/login`, { password });
-      localStorage.setItem('token', res.data.access_token);
-      setToken(res.data.access_token);
-    } catch (err: any) {
-      setLoginError(err.response?.data?.detail || 'Неверный пароль');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const { data: tasks, isLoading: tasksLoading, refetch: refetchTasks } = useQuery<Task[]>({
     queryKey: ['tasks', filter],
     queryFn: async () => {
-      if (!token) return [];
       const params = filter ? { status: filter } : {};
-      const res = await axios.get(`${API_URL}/api/tasks`, {
-        params,
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get(`${API_URL}/api/tasks`, { params });
       return res.data;
     },
-    enabled: !!token,
     refetchInterval: 5000,
   });
 
   const { data: stats, refetch: refetchStats } = useQuery<Stats>({
     queryKey: ['stats'],
     queryFn: async () => {
-      if (!token) return null;
-      const res = await axios.get(`${API_URL}/api/stats`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get(`${API_URL}/api/stats`);
       return res.data;
     },
-    enabled: !!token,
     refetchInterval: 5000,
   });
-
-  if (!token) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full">
-          <div className="text-center mb-8">
-            <div className="text-6xl mb-4">📋</div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">TeamFlow</h1>
-            <p className="text-gray-600">Управление задачами команды</p>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Пароль
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Введите пароль"
-                required
-                autoFocus
-              />
-              {loginError && (
-                <p className="mt-2 text-sm text-red-600">{loginError}</p>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? 'Вход...' : 'Войти'}
-            </button>
-          </form>
-
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-800 font-medium mb-2">
-                💡 По умолчанию пароль: <code className="bg-blue-100 px-2 py-1 rounded">teamflow</code>
-              </p>
-              <p className="text-xs text-blue-600">
-                Измените его в настройках после первого входа
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const statusColors: Record<string, string> = {
-    TODO: 'bg-gray-100 text-gray-800 border-gray-300',
-    DOING: 'bg-blue-100 text-blue-800 border-blue-300',
-    DONE: 'bg-green-100 text-green-800 border-green-300',
-    BLOCKED: 'bg-red-100 text-red-800 border-red-300',
-  };
-
-  const statusEmoji: Record<string, string> = {
-    TODO: '📝',
-    DOING: '🔄',
-    DONE: '✅',
-    BLOCKED: '🚫',
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <header className="mb-8 flex justify-between items-center">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">TeamFlow</h1>
-            <p className="text-gray-600">Доска задач команды</p>
-          </div>
-          <button
-            onClick={() => {
-              localStorage.removeItem('token');
-              setToken(null);
-            }}
-            className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm transition"
-          >
-            Выйти
-          </button>
+        <header className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">TeamFlow</h1>
+          <p className="text-gray-600">Доска задач команды</p>
         </header>
 
         {stats && (
@@ -196,6 +103,12 @@ const Dashboard: React.FC = () => {
               {statusEmoji[status]} {status}
             </button>
           ))}
+          <button
+            onClick={() => { refetchTasks(); refetchStats(); }}
+            className="ml-auto px-4 py-2 bg-white border rounded-lg text-gray-700 hover:bg-gray-50 transition"
+          >
+            🔄 Обновить
+          </button>
         </div>
 
         {tasksLoading ? (
@@ -224,7 +137,7 @@ const Dashboard: React.FC = () => {
                       👤 {task.assignee_name}
                     </span>
                   )}
-                  <span className="text-gray-500">
+                  <span className="text-gray-500 ml-auto">
                     {new Date(task.created_at).toLocaleDateString('ru')}
                   </span>
                 </div>
@@ -235,15 +148,9 @@ const Dashboard: React.FC = () => {
           <div className="text-center py-16 bg-white rounded-xl shadow-sm">
             <div className="text-6xl mb-4">📋</div>
             <p className="text-gray-500 text-lg mb-2">Задач пока нет</p>
-            <p className="text-gray-400 text-sm mb-4">
+            <p className="text-gray-400 text-sm">
               Создайте первую задачу через Telegram бот командой <code className="bg-gray-100 px-2 py-1 rounded">/task</code>
             </p>
-            <button
-              onClick={() => { refetchTasks(); refetchStats(); }}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-            >
-              🔄 Обновить
-            </button>
           </div>
         )}
 

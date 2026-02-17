@@ -6,7 +6,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 
-# Копируем всё остальное (включая .env)
+# Копируем .env ПЕРЕД сборкой
+COPY .env* ./
+
+# Копируем остальное
 COPY . .
 
 EXPOSE 5173
