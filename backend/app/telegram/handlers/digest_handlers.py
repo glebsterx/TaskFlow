@@ -14,8 +14,10 @@ router = Router()
 @router.message(Command("digest"))
 async def cmd_digest(message: Message):
     """Generate and send weekly digest."""
+    from aiogram.enums import ChatAction
     
-    await message.answer("📊 Генерирую еженедельный дайджест...")
+    # Показываем typing indicator вместо сообщения
+    await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
     
     async with AsyncSessionLocal() as session:
         digest_service = DigestService(session)

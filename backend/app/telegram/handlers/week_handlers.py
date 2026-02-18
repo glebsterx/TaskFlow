@@ -19,13 +19,3 @@ async def cmd_week(message: Message):
         board_message = board_service.format_board_message(board)
     
     await message.answer(board_message, parse_mode="Markdown")
-    
-    # Send tasks with action buttons (only non-done tasks)
-    from app.domain.enums import TaskStatus
-    for status in [TaskStatus.TODO.value, TaskStatus.DOING.value, TaskStatus.BLOCKED.value]:
-        for task in board[status]:
-            await message.answer(
-                f"#{task.id} {task.title}\n"
-                f"Статус: {task.status}",
-                reply_markup=get_task_action_keyboard(task.id)
-            )

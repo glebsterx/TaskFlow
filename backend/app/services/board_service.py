@@ -15,7 +15,7 @@ class BoardService:
         self.task_repository = TaskRepository(session)
     
     async def get_week_board(self) -> Dict[str, List[Task]]:
-        """Get tasks grouped by status for current week."""
+        """Get tasks grouped by status for current week (Mon-Sun)."""
         tasks = await self.task_repository.get_week_tasks()
         
         # Group by status
@@ -63,6 +63,8 @@ class BoardService:
     
     def format_board_message(self, board: Dict[str, List[Task]]) -> str:
         """Format board as text message."""
+        from app.core.clock import Clock
+        
         status_emoji = {
             TaskStatus.TODO.value: "📝",
             TaskStatus.DOING.value: "🔄",
@@ -77,7 +79,16 @@ class BoardService:
             TaskStatus.BLOCKED.value: "Заблокировано"
         }
         
-        message = "📅 **Недельная доска задач**\n\n"
+        # Текущая неделя (Пн-Вс)
+        now = Clock.now()
+        week_start = now - timedelta(days=now.weekday())
+        week_end = week_start + timedelta(days=6)
+        
+        message = (
+            f"📅 *Недельная доска задач*\n"
+            f"{week_start.strftime('%d.%m')} - {week_end.strftime('%d.%m.%Y')}\n"
+            f"_Показаны задачи созданные на этой неделе_\n\n"
+        )
         
         for status in [TaskStatus.TODO.value, TaskStatus.DOING.value, 
                        TaskStatus.DONE.value, TaskStatus.BLOCKED.value]:
@@ -85,13 +96,22 @@ class BoardService:
             if tasks:
                 emoji = status_emoji[status]
                 name = status_names[status]
-                message += f"\n{emoji} **{name}** ({len(tasks)}):\n"
+                message += f"{emoji} *{name}* ({len(tasks)}):\n"
                 
                 for task in tasks:
-                    assignee = f" 👤 @{task.assignee_name}" if task.assignee_name else ""
+                    # Исправляем двойной @
+                    if task.assignee:
+                        assignee = f" 👤 {task.assignee.display_name}"
+                    elif task.assignee_name:
+                        # Убираем @ если он уже есть
+                        name = task.assignee_name if task.assignee_name.startswith('@') else f"@{task.assignee_name}"
+                        assignee = f" 👤 {name}"
+                    else:
+                        assignee = ""
                     message += f"  #{task.id} {task.title}{assignee}\n"
+                message += "\n"
         
         total = sum(len(tasks) for tasks in board.values())
-        message += f"\n📊 Всего задач: {total}"
+        message += f"📊 Всего задач: {total}"
         
         return message

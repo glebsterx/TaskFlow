@@ -49,6 +49,23 @@ async def _run_migrations():
     db_file = settings.DATABASE_URL.replace("sqlite+aiosqlite:///", "")
 
     async with aiosqlite.connect(db_file) as db:
+        # Проверяем есть ли таблица projects
+        async with db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='projects'") as cur:
+            projects_exists = await cur.fetchone()
+
+        if not projects_exists:
+            await db.execute("""
+                CREATE TABLE projects (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(100) NOT NULL UNIQUE,
+                    description TEXT,
+                    emoji VARCHAR(10) DEFAULT '📁',
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            print("[migrate] Created table: projects")
+
         # Получаем текущие колонки tasks
         async with db.execute("PRAGMA table_info(tasks)") as cur:
             cols = {row[1] async for row in cur}
@@ -57,6 +74,7 @@ async def _run_migrations():
         migrations = [
             ("assignee_id", "ALTER TABLE tasks ADD COLUMN assignee_id INTEGER"),
             ("source_chat_id", "ALTER TABLE tasks ADD COLUMN source_chat_id BIGINT"),
+            ("project_id", "ALTER TABLE tasks ADD COLUMN project_id INTEGER REFERENCES projects(id)"),
         ]
         for col, sql in migrations:
             if col not in cols:

@@ -25,7 +25,7 @@ async def cmd_meeting(message: Message, state: FSMContext):
     """Handle /meeting command - record meeting summary."""
     await message.answer(
         "📝 Фиксация результатов встречи\n\n"
-        "Введите краткое резюме договорённостей:"
+        "Введите краткое резюме:"
     )
     await state.set_state(MeetingStates.waiting_for_summary)
 
