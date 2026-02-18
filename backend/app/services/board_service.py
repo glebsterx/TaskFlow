@@ -15,8 +15,13 @@ class BoardService:
         self.task_repository = TaskRepository(session)
     
     async def get_week_board(self) -> Dict[str, List[Task]]:
-        """Get tasks grouped by status for current week (Mon-Sun)."""
-        tasks = await self.task_repository.get_week_tasks()
+        """Get all open tasks (не DONE) grouped by status, старые сверху."""
+        # Получаем все задачи
+        all_tasks = await self.task_repository.get_all()
+        
+        # Фильтруем незакрытые и сортируем по дате создания (старые сверху)
+        open_tasks = [t for t in all_tasks if t.status != TaskStatus.DONE.value]
+        open_tasks.sort(key=lambda t: t.created_at)
         
         # Group by status
         board = {
@@ -26,7 +31,7 @@ class BoardService:
             TaskStatus.BLOCKED.value: []
         }
         
-        for task in tasks:
+        for task in open_tasks:
             if task.status in board:
                 board[task.status].append(task)
         
@@ -86,8 +91,7 @@ class BoardService:
         
         message = (
             f"📅 *Недельная доска задач*\n"
-            f"{week_start.strftime('%d.%m')} - {week_end.strftime('%d.%m.%Y')}\n"
-            f"_Показаны задачи созданные на этой неделе_\n\n"
+            f"{week_start.strftime('%d.%m')} - {week_end.strftime('%d.%m.%Y')}\n\n"
         )
         
         for status in [TaskStatus.TODO.value, TaskStatus.DOING.value, 

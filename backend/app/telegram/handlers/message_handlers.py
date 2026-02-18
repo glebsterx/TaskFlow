@@ -1,4 +1,4 @@
-"""Message handler — реакция на ключевые слова в любом чате."""
+"""Message handler — умная эвристика для автосоздания задач."""
 import re
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -12,137 +12,227 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 router = Router()
 
-# Ключевые слова (RU + EN) которые триггерят предложение создать задачу
+# Расширенные ключевые слова для автосоздания задач
 TASK_KEYWORDS = re.compile(
-    r'\b(нужно|надо|необходимо|сделать|задача|задачу|todo|need to|needs to|'
-    r'please do|fix|исправить|добавить|реализовать|проверить|разобраться|'
-    r'не забыть|напомни|remind)\b',
+    r'\b('
+    # Русские императивы
+    r'нужно|надо|необходимо|требуется|'
+    r'сделай|сделать|создай|создать|добавь|добавить|'
+    r'исправь|исправить|почини|починить|'
+    r'проверь|проверить|протестируй|протестировать|'
+    r'реализуй|реализовать|внедри|внедрить|'
+    r'разберись|разобраться|посмотри|посмотреть|'
+    r'не забудь|не забыть|напомни|напомнить|'
+    r'задача|задачу|поручение|запланируй|запланировать|'
+    # Английские
+    r'todo|task|need to|needs to|have to|must|should|'
+    r'please do|please|fix|create|add|implement|'
+    r'check|test|review|remind|remember|'
+    r'make sure|don\'t forget'
+    r')\b',
     re.IGNORECASE
 )
 
-# Минимальная длина сообщения чтобы не триггерить на "нужно" без контекста
-MIN_MESSAGE_LEN = 10
+# Паттерны поручений (более сложная эвристика)
+ASSIGNMENT_PATTERNS = [
+    re.compile(r'@\w+[,\s]+(нужно|надо|сделай|проверь|исправь)', re.IGNORECASE),
+    re.compile(r'(нужно|надо)\s+@\w+', re.IGNORECASE),
+    re.compile(r'(сделай|сделать|проверь|проверить|исправь|исправить)\s+\S+', re.IGNORECASE),
+]
+
+MIN_MESSAGE_LEN = 10  # Минимум символов
+
+
+def count_words(text: str) -> int:
+    """Считает слова в тексте."""
+    return len(text.split())
+
+
+def is_task_like_message(text: str) -> bool:
+    """Проверяет похоже ли сообщение на задачу/поручение."""
+    if len(text) < MIN_MESSAGE_LEN:
+        return False
+    
+    # Минимум 5 слов включая ключевое слово
+    if count_words(text) < 5:
+        return False
+    
+    # Проверка ключевых слов
+    if TASK_KEYWORDS.search(text):
+        return True
+    
+    # Проверка паттернов поручений
+    for pattern in ASSIGNMENT_PATTERNS:
+        if pattern.search(text):
+            return True
+    
+    # Вопросительные предложения обычно не задачи
+    if text.strip().endswith('?') and not any(kw in text.lower() for kw in ['нужно', 'надо', 'сделать']):
+        return False
+    
+    return False
 
 
 def extract_task_title(text: str) -> str:
     """Вырезаем ключевое слово из начала и возвращаем суть."""
     cleaned = re.sub(
-        r'^(нужно|надо|необходимо|сделать|задача|задачу|todo|need to|needs to|please|fix|'
-        r'исправить|добавить|реализовать|проверить|разобраться|не забыть|напомни|remind)[:\s]+',
+        r'^(нужно|надо|необходимо|требуется|сделай|сделать|создай|создать|'
+        r'добавь|добавить|исправь|исправить|почини|починить|'
+        r'проверь|проверить|протестируй|протестировать|'
+        r'реализуй|реализовать|внедри|внедрить|'
+        r'разберись|разобраться|посмотри|посмотреть|'
+        r'не забудь|не забыть|напомни|напомнить|'
+        r'задача|задачу|поручение|запланируй|запланировать|'
+        r'todo|task|need to|needs to|have to|must|should|'
+        r'please do|please|fix|create|add|implement|'
+        r'check|test|review|remind|remember|'
+        r'make sure|don\'t forget)[:\s]+',
         '', text.strip(), flags=re.IGNORECASE
     ).strip()
-    # Обрезаем до 200 символов
     return cleaned[:200] if cleaned else text[:200]
 
 
 def make_assign_keyboard(task_id: int, users: list) -> InlineKeyboardMarkup:
-    """Клавиатура назначения после создания задачи из сообщения."""
+    """Клавиатура назначения после создания задачи."""
     buttons = [[
-        InlineKeyboardButton(text="👤 Взять себе", callback_data=f"assign:{task_id}:{users[0].telegram_id if users else 0}:self"),
+        InlineKeyboardButton(text="👤 Взять себе", callback_data=f"self_assign:{task_id}")
     ]]
-    # Остальные участники
-    others = [InlineKeyboardButton(
-        text=f"→ {u.display_name}",
-        callback_data=f"assign:{task_id}:{u.telegram_id}"
-    ) for u in users[:6]]
-    if others:
-        buttons.append(others)
-    buttons.append([InlineKeyboardButton(text="⏭ Без исполнителя", callback_data=f"assign_skip:{task_id}")])
+    
+    for user in users[:5]:
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"👤 {user.display_name}",
+                callback_data=f"assign_new:{task_id}:{user.telegram_id}"
+            )
+        ])
+    
+    buttons.append([
+        InlineKeyboardButton(text="📋 Без исполнителя", callback_data=f"skip_assign:{task_id}")
+    ])
+    
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-# Хранилище pending задач (message_id → title)
-# В продакшне лучше Redis, но для MVP памяти хватит
-_pending: dict[str, str] = {}
+# Хранилище ожидающих подтверждения
+_pending = {}
 
 
-@router.message(F.text & ~F.text.startswith('/'))
-async def process_chat_message(message: Message):
-    """Ищем ключевые слова в любом сообщении."""
-    if not message.text or message.from_user.is_bot:
+@router.message(F.text)
+async def handle_potential_task(message: Message):
+    """Обработчик всех текстовых сообщений — детектирует задачи."""
+    text = message.text
+    
+    if not is_task_like_message(text):
         return
-    if len(message.text) < MIN_MESSAGE_LEN:
-        return
-    if not TASK_KEYWORDS.search(message.text):
-        return
-
-    title = extract_task_title(message.text)
-    key = f"{message.chat.id}:{message.message_id}"
-    _pending[key] = title
-
+    
+    # Сохраняем в ожидании подтверждения
+    msg_id = message.message_id
+    _pending[msg_id] = {
+        'text': text,
+        'chat_id': message.chat.id,
+        'from_user': message.from_user.id
+    }
+    
     await message.reply(
-        f"📋 Создать задачу?\n\n*{title}*",
-        reply_markup=get_confirmation_keyboard(message.message_id),
+        f"💡 Обнаружена задача!\n\n*Создать задачу?*\n_{extract_task_title(text)}_",
+        reply_markup=get_confirmation_keyboard(msg_id),
         parse_mode="Markdown"
     )
-    logger.info("task_keyword_detected", chat_id=message.chat.id, title=title)
+    logger.info("task_suggestion", message_id=msg_id)
 
 
 @router.callback_query(F.data.startswith("confirm_task:"))
-async def handle_confirm_task(callback: CallbackQuery):
-    """Подтверждение создания задачи из сообщения."""
-    message_id = callback.data.split(":")[1]
-    key = f"{callback.message.chat.id}:{message_id}"
-    title = _pending.pop(key, None)
-
-    if not title:
-        await callback.answer("❌ Время истекло, попробуйте снова")
+async def handle_confirm_task(callback: CallbackQuery, tg_user_id: int = 0):
+    """Подтверждение создания задачи."""
+    msg_id = int(callback.data.split(":")[1])
+    
+    if msg_id not in _pending:
+        await callback.answer("⏱️ Время подтверждения истекло")
         return
-
-    try:
-        async with AsyncSessionLocal() as session:
-            service = TaskService(session)
-            user_repo = UserRepository(session)
-
-            task = await service.create_task(
-                title=title,
-                source=TaskSource.AUTO_DETECTED,
-                source_message_id=int(message_id),
-                source_chat_id=callback.message.chat.id,
-            )
-            await session.commit()
-
-            # Предлагаем назначить
-            users = await user_repo.get_all()
-
-        if users:
-            # Обновляем сообщение — предлагаем назначить
-            await callback.message.edit_text(
-                f"✅ Задача #{task.id} создана!\n*{task.title}*\n\nНазначить исполнителя?",
-                reply_markup=make_assign_keyboard(task.id, users),
-                parse_mode="Markdown"
-            )
-        else:
-            await callback.message.edit_text(
-                f"✅ Задача #{task.id} создана!\n*{task.title}*\n\n"
-                f"Исполнитель не назначен. Используйте /tasks → Назначить",
-                parse_mode="Markdown"
-            )
-
-        await callback.answer("✅ Задача создана!")
-        logger.info("task_created_from_message", task_id=task.id, title=title)
-
-    except Exception as e:
-        logger.error("confirm_task_error", error=str(e))
-        await callback.answer("❌ Ошибка создания задачи")
+    
+    pending = _pending.pop(msg_id)
+    title = extract_task_title(pending['text'])
+    
+    async with AsyncSessionLocal() as session:
+        service = TaskService(session)
+        task = await service.create_task(
+            title=title,
+            source=TaskSource.AUTO_KEYWORD,
+            source_message_id=msg_id,
+            source_chat_id=pending['chat_id']
+        )
+        
+        # Получаем список пользователей для назначения
+        user_repo = UserRepository(session)
+        users = await user_repo.get_all()
+        
+        await session.commit()
+    
+    await callback.message.edit_text(
+        f"✅ *Задача создана!*\n\n#{task.id} {task.title}\n\n👤 Назначить исполнителя:",
+        reply_markup=make_assign_keyboard(task.id, users),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+    logger.info("task_created_from_keyword", task_id=task.id)
 
 
 @router.callback_query(F.data.startswith("cancel_task:"))
 async def handle_cancel_task(callback: CallbackQuery):
     """Отмена создания задачи."""
-    message_id = callback.data.split(":")[1]
-    key = f"{callback.message.chat.id}:{message_id}"
-    _pending.pop(key, None)
-    await callback.message.delete()
-    await callback.answer("Отменено")
+    msg_id = int(callback.data.split(":")[1])
+    _pending.pop(msg_id, None)
+    
+    await callback.message.edit_text("❌ Отменено")
+    await callback.answer()
 
 
-@router.callback_query(F.data.startswith("assign_skip:"))
-async def handle_assign_skip(callback: CallbackQuery):
-    """Пропустить назначение."""
-    task_id = callback.data.split(":")[1]
+@router.callback_query(F.data.startswith("self_assign:"))
+async def handle_self_assign(callback: CallbackQuery, tg_user_id: int = 0):
+    """Взять задачу себе."""
+    task_id = int(callback.data.split(":")[1])
+    
+    async with AsyncSessionLocal() as session:
+        service = TaskService(session)
+        user_repo = UserRepository(session)
+        user = await user_repo.get_by_telegram_id(tg_user_id)
+        
+        if user:
+            await service.take_task(task_id, user)
+            await session.commit()
+    
     await callback.message.edit_text(
-        f"📋 Задача #{task_id} создана без исполнителя\n\nИспользуйте /tasks чтобы назначить позже",
-        parse_mode="Markdown"
+        f"✅ Задача #{task_id} взята в работу!\n👤 Исполнитель: {user.display_name}"
     )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("assign_new:"))
+async def handle_assign_new(callback: CallbackQuery):
+    """Назначить задачу конкретному пользователю."""
+    parts = callback.data.split(":")
+    task_id = int(parts[1])
+    user_telegram_id = int(parts[2])
+    
+    async with AsyncSessionLocal() as session:
+        service = TaskService(session)
+        user_repo = UserRepository(session)
+        user = await user_repo.get_by_telegram_id(user_telegram_id)
+        
+        if user:
+            await service.assign_task(task_id, user)
+            await session.commit()
+    
+    await callback.message.edit_text(
+        f"✅ Задача #{task_id} назначена!\n👤 Исполнитель: {user.display_name}"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("skip_assign:"))
+async def handle_skip_assign(callback: CallbackQuery):
+    """Пропустить назначение исполнителя."""
+    task_id = int(callback.data.split(":")[1])
+    
+    await callback.message.edit_text(f"✅ Задача #{task_id} создана без исполнителя")
     await callback.answer()

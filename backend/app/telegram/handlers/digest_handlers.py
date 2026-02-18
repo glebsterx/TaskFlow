@@ -15,6 +15,7 @@ router = Router()
 async def cmd_digest(message: Message):
     """Generate and send weekly digest."""
     from aiogram.enums import ChatAction
+    from app.telegram.handlers.help_handlers import get_main_menu_keyboard
     
     # Показываем typing indicator вместо сообщения
     await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
@@ -24,12 +25,14 @@ async def cmd_digest(message: Message):
         digest = await digest_service.generate_weekly_digest()
     
     await message.answer(digest, parse_mode="Markdown")
+    await message.answer("📱 Главное меню:", reply_markup=get_main_menu_keyboard())
     logger.info("digest_sent")
 
 
 @router.message(Command("overdue"))
 async def cmd_overdue(message: Message):
     """Show overdue tasks."""
+    from app.telegram.handlers.help_handlers import get_main_menu_keyboard
     
     async with AsyncSessionLocal() as session:
         digest_service = DigestService(session)
@@ -40,4 +43,5 @@ async def cmd_overdue(message: Message):
     else:
         await message.answer("✅ Нет просроченных задач!")
     
+    await message.answer("📱 Главное меню:", reply_markup=get_main_menu_keyboard())
     logger.info("overdue_check_sent")

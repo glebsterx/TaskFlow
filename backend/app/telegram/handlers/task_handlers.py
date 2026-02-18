@@ -1,7 +1,7 @@
 """Telegram command handlers - Fixed version."""
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from app.core.db import AsyncSessionLocal
@@ -20,19 +20,93 @@ class TaskCreationStates(StatesGroup):
     waiting_for_description = State()
 
 
+def get_cancel_keyboard() -> InlineKeyboardMarkup:
+    """Кнопка отмены."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_task_creation")
+    ]])
+
+
+def get_skip_keyboard() -> InlineKeyboardMarkup:
+    """Кнопка пропуска."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⏭️ Пропустить", callback_data="skip_description")
+    ]])
+
+
 @router.message(Command("task"))
 async def cmd_task(message: Message, state: FSMContext):
     """Handle /task command - start task creation dialog."""
-    # CRITICAL: Clear any previous state
     await state.clear()
     
     await message.answer(
-        "📝 **Создание новой задачи**\n\n"
+        "📝 *Создание новой задачи*\n\n"
         "Введите название задачи:",
+        reply_markup=get_cancel_keyboard(),
         parse_mode="Markdown"
     )
     await state.set_state(TaskCreationStates.waiting_for_title)
     logger.info("task_creation_started", user_id=message.from_user.id)
+
+
+@router.message(Command("cancel"))
+async def cmd_cancel(message: Message, state: FSMContext):
+    """Cancel task creation."""
+    current_state = await state.get_state()
+    if current_state is None:
+        await message.answer("Нечего отменять 🤷")
+        return
+    
+    await state.clear()
+    await message.answer("❌ Создание задачи отменено")
+    logger.info("task_creation_cancelled", user_id=message.from_user.id)
+
+
+@router.callback_query(F.data == "cancel_task_creation")
+async def handle_cancel_button(callback: CallbackQuery, state: FSMContext):
+    """Handle cancel button."""
+    await state.clear()
+    await callback.message.edit_text("❌ Создание задачи отменено")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "skip_description")
+async def handle_skip_description(callback: CallbackQuery, state: FSMContext):
+    """Handle skip description button."""
+    data = await state.get_data()
+    title = data.get("title")
+    
+    if not title:
+        await callback.answer("❌ Ошибка")
+        return
+    
+    # Create task without description
+    try:
+        async with AsyncSessionLocal() as session:
+            service = TaskService(session)
+            task = await service.create_task(
+                title=title,
+                description=None,
+                source=TaskSource.MANUAL_COMMAND
+            )
+            await session.commit()
+        
+        await callback.message.edit_text(
+            f"✅ *Задача создана!*\n\n"
+            f"#{task.id} {task.title}\n"
+            f"Статус: {task.status}",
+            reply_markup=get_task_action_keyboard(task.id),
+            parse_mode="Markdown"
+        )
+        await state.clear()
+        logger.info("task_created", task_id=task.id, title=title)
+        
+    except Exception as e:
+        await callback.message.edit_text(f"❌ Ошибка: {str(e)}")
+        await state.clear()
+        logger.error("task_creation_error", error=str(e))
+    
+    await callback.answer()
 
 
 @router.message(TaskCreationStates.waiting_for_title)
@@ -47,8 +121,8 @@ async def process_task_title(message: Message, state: FSMContext):
     await state.update_data(title=title)
     await message.answer(
         f"✅ Название: *{title}*\n\n"
-        "Теперь введите описание задачи\n"
-        "(или отправьте /skip чтобы пропустить):",
+        "Теперь введите описание задачи:",
+        reply_markup=get_skip_keyboard(),
         parse_mode="Markdown"
     )
     await state.set_state(TaskCreationStates.waiting_for_description)
@@ -58,11 +132,9 @@ async def process_task_title(message: Message, state: FSMContext):
 async def process_task_description(message: Message, state: FSMContext):
     """Process task description input and create task."""
     
-    # Get title from state
     data = await state.get_data()
     title = data.get("title")
     
-    # CRITICAL: Validate title exists
     if not title:
         await message.answer(
             "❌ Ошибка: название задачи потеряно.\n"
@@ -72,10 +144,8 @@ async def process_task_description(message: Message, state: FSMContext):
         logger.error("task_creation_failed_no_title", user_id=message.from_user.id)
         return
     
-    # Get description
-    description = None if message.text == "/skip" else (message.text.strip() if message.text else None)
+    description = message.text.strip() if message.text else None
     
-    # Create task
     try:
         async with AsyncSessionLocal() as session:
             service = TaskService(session)
@@ -87,7 +157,7 @@ async def process_task_description(message: Message, state: FSMContext):
             await session.commit()
         
         await message.answer(
-            f"✅ **Задача создана!**\n\n"
+            f"✅ *Задача создана!*\n\n"
             f"#{task.id} {task.title}\n"
             f"Статус: {task.status}",
             reply_markup=get_task_action_keyboard(task.id),
@@ -111,7 +181,6 @@ async def handle_task_action(callback: CallbackQuery):
     """Handle task action callbacks - with error handling."""
     
     try:
-        # Parse callback data: task:123:action
         parts = callback.data.split(":")
         if len(parts) != 3:
             try:
@@ -149,14 +218,11 @@ async def handle_task_action(callback: CallbackQuery):
             
             await session.commit()
         
-        # Try to answer callback (may fail if too old)
         try:
             await callback.answer(answer_text)
         except Exception as e:
             logger.warning("callback_answer_failed", error=str(e))
-            # Continue anyway - not critical
         
-        # Update message
         try:
             await callback.message.edit_text(
                 message_text + f"\n{task.title}\nСтатус: {task.status}",
