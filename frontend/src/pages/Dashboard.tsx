@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8180';
 
@@ -93,6 +95,38 @@ const STATUS_LABELS: Record<string, string> = {
   DONE: 'Готово',
   BLOCKED: 'Блок',
 };
+
+function MarkdownContent({ content, className = '' }: { content: string; className?: string }) {
+  return (
+    <div className={`text-sm text-gray-700 ${className}`}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          em: ({ children }) => <em className="italic">{children}</em>,
+          ul: ({ children }) => <ul className="list-disc list-inside space-y-0.5 mb-1.5">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal list-inside space-y-0.5 mb-1.5">{children}</ol>,
+          li: ({ children }) => <li>{children}</li>,
+          code: ({ inline, children }: any) => inline
+            ? <code className="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono">{children}</code>
+            : <pre className="bg-gray-100 p-2 rounded text-xs font-mono overflow-x-auto mb-1.5 whitespace-pre-wrap"><code>{children}</code></pre>,
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{children}</a>
+          ),
+          h1: ({ children }) => <h1 className="text-base font-bold mb-1">{children}</h1>,
+          h2: ({ children }) => <h2 className="text-sm font-bold mb-1">{children}</h2>,
+          h3: ({ children }) => <h3 className="text-sm font-semibold mb-1">{children}</h3>,
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-4 border-gray-300 pl-3 text-gray-600 mb-1.5">{children}</blockquote>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [currentPage, setCurrentPage] = useState<'tasks' | 'projects' | 'meetings'>('tasks');
@@ -535,7 +569,7 @@ export default function Dashboard() {
                   <div className="text-3xl mb-2">{proj.emoji || '📁'}</div>
                   <h3 className="font-bold text-lg mb-1">{proj.name}</h3>
                   {proj.description && (
-                    <p className="text-sm text-gray-600 line-clamp-2">{proj.description}</p>
+                    <div className="text-sm text-gray-600 line-clamp-2 overflow-hidden">{proj.description}</div>
                   )}
                   <div className="mt-2 text-xs text-gray-400">
                     {tasks.filter(t => t.project_id === proj.id).length} задач
@@ -610,6 +644,7 @@ function TaskModal({ task, onClose, users, projects, changeStatusMutation, assig
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || '');
+  const [descTab, setDescTab] = useState<'write' | 'preview'>('write');
 
   // Сбрасываем форму при смене задачи
   React.useEffect(() => {
@@ -640,12 +675,30 @@ function TaskModal({ task, onClose, users, projects, changeStatusMutation, assig
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSave(); } }}
               className="w-full px-3 py-2 border rounded-lg font-bold text-sm sm:text-base"
             />
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg text-sm"
-              rows={3}
-            />
+            <div className="border rounded-lg overflow-hidden">
+              <div className="flex border-b bg-gray-50">
+                <button type="button" onClick={() => setDescTab('write')}
+                  className={`px-3 py-1.5 text-xs font-medium transition ${descTab === 'write' ? 'bg-white text-gray-800 border-r' : 'text-gray-500 hover:text-gray-700'}`}
+                >✏️ Редактор</button>
+                <button type="button" onClick={() => setDescTab('preview')}
+                  className={`px-3 py-1.5 text-xs font-medium transition ${descTab === 'preview' ? 'bg-white text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+                >👁 Просмотр</button>
+              </div>
+              {descTab === 'write' ? (
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-3 py-2 border-0 text-sm focus:outline-none"
+                  rows={4}
+                  placeholder="Описание (поддерживается Markdown)"
+                />
+              ) : (
+                <div className="px-3 py-2 min-h-[96px]">
+                  {description ? <MarkdownContent content={description} /> : <span className="text-gray-400 text-xs">Нет описания</span>}
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-gray-400">**жирный**, *курсив*, `код`, - список</p>
             <div className="flex gap-2">
               <button
                 onClick={handleSave}
@@ -677,7 +730,7 @@ function TaskModal({ task, onClose, users, projects, changeStatusMutation, assig
                 <span className="text-xs text-green-500">✓ {formatDatetime(task.completed_at)}</span>
               )}
             </div>
-            {task.description && <p className="text-sm text-gray-600 mt-2">{task.description}</p>}
+            {task.description && <MarkdownContent content={task.description} className="mt-2" />}
           </>
         )}
       </div>
@@ -762,6 +815,7 @@ function ProjectModal({ project, onClose, updateProjectMutation, setConfirmDelet
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description || '');
   const [emoji, setEmoji] = useState(project.emoji || '📁');
+  const [descTab, setDescTab] = useState<'write' | 'preview'>('write');
 
   const handleSave = () => {
     if (name.trim()) {
@@ -787,13 +841,30 @@ function ProjectModal({ project, onClose, updateProjectMutation, setConfirmDelet
           placeholder="Название"
           className="w-full px-3 py-2 border rounded-lg text-sm"
         />
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Описание"
-          className="w-full px-3 py-2 border rounded-lg text-sm"
-          rows={3}
-        />
+        <div className="border rounded-lg overflow-hidden">
+          <div className="flex border-b bg-gray-50">
+            <button type="button" onClick={() => setDescTab('write')}
+              className={`px-3 py-1.5 text-xs font-medium transition ${descTab === 'write' ? 'bg-white text-gray-800 border-r' : 'text-gray-500 hover:text-gray-700'}`}
+            >✏️ Редактор</button>
+            <button type="button" onClick={() => setDescTab('preview')}
+              className={`px-3 py-1.5 text-xs font-medium transition ${descTab === 'preview' ? 'bg-white text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+            >👁 Просмотр</button>
+          </div>
+          {descTab === 'write' ? (
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Описание (поддерживается Markdown)"
+              className="w-full px-3 py-2 border-0 text-sm focus:outline-none"
+              rows={3}
+            />
+          ) : (
+            <div className="px-3 py-2 min-h-[72px]">
+              {description ? <MarkdownContent content={description} /> : <span className="text-gray-400 text-xs">Нет описания</span>}
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-gray-400">**жирный**, *курсив*, `код`, - список</p>
       </div>
       <div className="flex gap-2">
         <button onClick={onClose} className="flex-1 py-2 bg-gray-100 rounded-lg text-sm">Отмена</button>
@@ -866,13 +937,17 @@ function NewTaskModal({ onClose, projects, createTaskMutation }: any) {
           className="w-full px-3 py-2 border rounded-lg text-sm"
           autoFocus
         />
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Описание"
-          className="w-full px-3 py-2 border rounded-lg text-sm"
-          rows={3}
-        />
+        <div>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Описание (поддерживается Markdown)"
+            className="w-full px-3 py-2 border rounded-lg text-sm"
+            rows={3}
+            ref={descRef}
+          />
+          <p className="text-xs text-gray-400 mt-0.5">**жирный**, *курсив*, `код`, - список</p>
+        </div>
         <select
           value={projectId}
           onChange={(e) => setProjectId(e.target.value)}
@@ -928,13 +1003,16 @@ function NewProjectModal({ onClose, createProjectMutation }: any) {
           className="w-full px-3 py-2 border rounded-lg text-sm"
           autoFocus
         />
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Описание"
-          className="w-full px-3 py-2 border rounded-lg text-sm"
-          rows={2}
-        />
+        <div>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Описание (поддерживается Markdown)"
+            className="w-full px-3 py-2 border rounded-lg text-sm"
+            rows={2}
+          />
+          <p className="text-xs text-gray-400 mt-0.5">**жирный**, *курсив*, `код`, - список</p>
+        </div>
       </div>
       <div className="flex gap-2">
         <button onClick={onClose} className="flex-1 py-2 bg-gray-100 rounded-lg text-sm">Отмена</button>
