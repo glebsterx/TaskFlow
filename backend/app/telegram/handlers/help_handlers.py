@@ -93,8 +93,11 @@ async def handle_menu_callback(callback: CallbackQuery):
     
     action = callback.data.split(":")[1]
     
-    # Answer callback immediately
-    await callback.answer()
+    # Answer callback immediately (может быть старый)
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning("callback_answer_failed", error=str(e))
     
     # Create message object for handlers
     message = callback.message

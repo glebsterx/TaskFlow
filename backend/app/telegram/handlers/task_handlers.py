@@ -112,6 +112,10 @@ async def handle_skip_description(callback: CallbackQuery, state: FSMContext):
 @router.message(TaskCreationStates.waiting_for_title)
 async def process_task_title(message: Message, state: FSMContext):
     """Process task title input."""
+    # Игнорируем команды - они должны обрабатываться как команды
+    if message.text and message.text.startswith('/'):
+        return
+    
     title = message.text.strip() if message.text else ""
     
     if not title:
@@ -131,6 +135,10 @@ async def process_task_title(message: Message, state: FSMContext):
 @router.message(TaskCreationStates.waiting_for_description)
 async def process_task_description(message: Message, state: FSMContext):
     """Process task description input and create task."""
+    
+    # Игнорируем команды - они должны обрабатываться как команды
+    if message.text and message.text.startswith('/'):
+        return
     
     data = await state.get_data()
     title = data.get("title")

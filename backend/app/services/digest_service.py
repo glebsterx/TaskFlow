@@ -23,18 +23,26 @@ class DigestService:
         """Generate weekly digest message for CURRENT week (Mon-Sun)."""
         from app.core.clock import Clock
         
-        # Текущая неделя (Пн-Вс)
+        # Текущая неделя (Пн-Вс) — используем timezone-aware datetime
         now = Clock.now()
         week_start = now - timedelta(days=now.weekday())
-        week_end = week_start + timedelta(days=6, hours=23, minutes=59)
+        week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
         
         # Задачи текущей недели
         all_tasks = await self.task_repo.get_all()
-        week_tasks = [t for t in all_tasks if week_start <= t.created_at <= week_end]
+        # Сравниваем aware datetime
+        week_tasks = [
+            t for t in all_tasks 
+            if t.created_at and week_start <= t.created_at.replace(tzinfo=now.tzinfo) <= week_end
+        ]
         
         # Встречи текущей недели
         all_meetings = await self.meeting_repo.get_recent(days=30)
-        week_meetings = [m for m in all_meetings if week_start <= m.meeting_date <= week_end]
+        week_meetings = [
+            m for m in all_meetings 
+            if m.meeting_date and week_start <= m.meeting_date.replace(tzinfo=now.tzinfo) <= week_end
+        ]
         
         digest = self._build_digest_message(week_tasks, week_meetings, week_start, week_end)
         logger.info("weekly_digest_generated", tasks_count=len(week_tasks))
