@@ -67,7 +67,16 @@ class TaskService:
         
         old_status = TaskStatus(task.status)
         task.status = new_status.value
-        
+
+        now = datetime.utcnow()
+        if new_status == TaskStatus.DOING and not task.started_at:
+            task.started_at = now
+        elif new_status == TaskStatus.DONE:
+            task.completed_at = now
+        elif new_status == TaskStatus.TODO:
+            task.started_at = None
+            task.completed_at = None
+
         task = await self.repository.update(task)
         
         logger.info(
@@ -131,6 +140,8 @@ class TaskService:
         task = await self.assign_task(task_id, user)
         if task.status == TaskStatus.TODO.value:
             task.status = TaskStatus.DOING.value
+            if not task.started_at:
+                task.started_at = datetime.utcnow()
             task = await self.repository.update(task)
         return task
 

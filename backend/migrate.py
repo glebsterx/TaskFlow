@@ -11,6 +11,8 @@ MIGRATIONS = [
     # (table, column, sql)
     ("tasks",          "assignee_id",    "ALTER TABLE tasks ADD COLUMN assignee_id INTEGER"),
     ("tasks",          "source_chat_id", "ALTER TABLE tasks ADD COLUMN source_chat_id BIGINT"),
+    ("tasks",          "started_at",     "ALTER TABLE tasks ADD COLUMN started_at DATETIME"),
+    ("tasks",          "completed_at",   "ALTER TABLE tasks ADD COLUMN completed_at DATETIME"),
     ("telegram_users", None,             """CREATE TABLE IF NOT EXISTS telegram_users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         telegram_id BIGINT NOT NULL UNIQUE,

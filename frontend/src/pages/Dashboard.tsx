@@ -17,6 +17,28 @@ interface Task {
   assignee?: Assignee;
   project_id?: number;
   created_at: string;
+  updated_at: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+function timeAgo(dateStr: string): string {
+  const date = new Date(dateStr.includes('Z') ? dateStr : dateStr + 'Z');
+  const diffMs = Date.now() - date.getTime();
+  const m = Math.floor(diffMs / 60000);
+  if (m < 1) return 'только что';
+  if (m < 60) return `${m} мин. назад`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} ч. назад`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return 'вчера';
+  if (d < 7) return `${d} дн. назад`;
+  return date.toLocaleDateString('ru', { day: 'numeric', month: 'short' });
+}
+
+function formatDatetime(dateStr: string): string {
+  const date = new Date(dateStr.includes('Z') ? dateStr : dateStr + 'Z');
+  return date.toLocaleString('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 interface Project {
@@ -54,8 +76,15 @@ const STATUS_COLOR: Record<string, string> = {
   BLOCKED: 'bg-red-100 text-red-700 border-red-300',
 };
 
+const STATUS_BORDER: Record<string, string> = {
+  TODO: 'border-l-gray-300',
+  DOING: 'border-l-blue-500',
+  DONE: 'border-l-green-500',
+  BLOCKED: 'border-l-red-500',
+};
+
 const STATUS_EMOJI: Record<string, string> = {
-  TODO: '📝', DOING: '🔄', DONE: '✅', BLOCKED: '🚫',
+  TODO: '📝', DOING: '🔄', DONE: '✅', BLOCKED: '⚠️',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -79,6 +108,10 @@ export default function Dashboard() {
   const [showNewProject, setShowNewProject] = useState(false);
   const [showNewMeeting, setShowNewMeeting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{type: string; id: number} | null>(null);
+  const [myUserId, setMyUserId] = useState<number | null>(() => {
+    const saved = localStorage.getItem('teamflow_my_user_id');
+    return saved ? Number(saved) : null;
+  });
 
   const queryClient = useQueryClient();
 
@@ -130,6 +163,14 @@ export default function Dashboard() {
 
   const assignMutation = useMutation({
     mutationFn: async ({ taskId, userId }: { taskId: number; userId: number | null }) => {
+      await axios.post(`${API_URL}/api/tasks/${taskId}/assign`, { user_id: userId });
+    },
+    onSuccess: invalidate,
+  });
+
+  const takeTaskMutation = useMutation({
+    mutationFn: async ({ taskId, userId }: { taskId: number; userId: number }) => {
+      await axios.post(`${API_URL}/api/tasks/${taskId}/status`, { status: 'DOING' });
       await axios.post(`${API_URL}/api/tasks/${taskId}/assign`, { user_id: userId });
     },
     onSuccess: invalidate,
@@ -264,13 +305,33 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-6">
 
         {/* Header */}
-        <header className="mb-3 sm:mb-4">
-          <h1 className="text-xl sm:text-3xl font-bold text-gray-900">TeamFlow</h1>
-          <p className="text-gray-500 text-xs sm:text-sm mt-0.5">Управление задачами</p>
+        <header className="mb-3 sm:mb-4 flex items-start justify-between">
+          <div>
+            <h1 className="text-xl sm:text-3xl font-bold text-gray-900">TeamFlow</h1>
+            <p className="text-gray-500 text-xs sm:text-sm mt-0.5">Управление задачами</p>
+          </div>
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className="text-xs text-gray-400">Вы:</span>
+            <select
+              value={myUserId ?? ''}
+              onChange={(e) => {
+                const val = e.target.value ? Number(e.target.value) : null;
+                setMyUserId(val);
+                if (val) localStorage.setItem('teamflow_my_user_id', String(val));
+                else localStorage.removeItem('teamflow_my_user_id');
+              }}
+              className="text-xs border rounded px-1.5 py-0.5 text-gray-700 bg-white"
+            >
+              <option value="">—</option>
+              {users.map(u => (
+                <option key={u.telegram_id} value={u.telegram_id}>{u.display_name}</option>
+              ))}
+            </select>
+          </div>
         </header>
 
         {/* Navigation */}
-        <nav className="mb-3 sm:mb-4 border-b overflow-x-auto">
+        <nav className="border-b overflow-x-auto mb-0">
           <div className="flex space-x-1 min-w-max">
             {[
               { id: 'tasks', label: 'Задачи', icon: '📋' },
@@ -290,6 +351,38 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
+        </nav>
+
+        {/* Breadcrumbs */}
+        <nav className="sticky top-0 z-40 bg-gray-50 border-b py-1.5 mb-3 flex items-center gap-1 text-xs sm:text-sm text-gray-500 flex-wrap">
+          <button
+            onClick={() => { setCurrentPage('tasks'); setStatusFilter(null); setProjectFilter(null); setAssigneeFilter(null); }}
+            className="hover:text-blue-600 transition font-medium"
+          >TeamFlow</button>
+          <span className="text-gray-300">›</span>
+          <button
+            onClick={() => { setStatusFilter(null); setProjectFilter(null); setAssigneeFilter(null); }}
+            className="text-gray-800 font-medium hover:text-blue-600 transition"
+          >
+            {currentPage === 'tasks' ? '📋 Задачи' : currentPage === 'projects' ? '📁 Проекты' : '🤝 Встречи'}
+          </button>
+          {currentPage === 'tasks' && projectFilter !== null && projectFilter > 0 && (() => {
+            const proj = projects.find(p => p.id === projectFilter);
+            return proj ? (
+              <>
+                <span className="text-gray-300">›</span>
+                <button onClick={() => setStatusFilter(null)} className="text-gray-700 hover:text-blue-600 transition">
+                  {proj.emoji} {proj.name}
+                </button>
+              </>
+            ) : null;
+          })()}
+          {currentPage === 'tasks' && statusFilter && (
+            <>
+              <span className="text-gray-300">›</span>
+              <span className="text-gray-600">{STATUS_EMOJI[statusFilter]} {STATUS_LABELS[statusFilter]}</span>
+            </>
+          )}
         </nav>
 
         {/* TASKS PAGE */}
@@ -361,23 +454,59 @@ export default function Dashboard() {
                   <div
                     key={task.id}
                     onClick={() => setSelectedTask(task)}
-                    className="bg-white rounded-lg border p-3 sm:p-4 hover:shadow-md transition cursor-pointer"
+                    className={`group relative bg-white rounded-lg border border-l-4 ${STATUS_BORDER[task.status]} p-3 sm:p-4 hover:shadow-md transition cursor-pointer`}
                   >
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-xs text-gray-400">#{task.id}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs border ${STATUS_COLOR[task.status]}`}>
-                        {STATUS_EMOJI[task.status]} <span className="hidden sm:inline">{STATUS_LABELS[task.status]}</span>
-                      </span>
-                    </div>
-                    <h3 className="font-semibold mb-2 text-sm leading-tight">{task.title}</h3>
-                    {proj && (
-                      <div className="text-xs bg-gray-50 px-2 py-1 rounded mb-2 inline-block">
-                        {proj.emoji} {proj.name}
+                    <div className="flex justify-between items-start mb-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs text-gray-400">#{task.id}</span>
+                        {proj && (
+                          <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                            {proj.emoji} {proj.name}
+                          </span>
+                        )}
                       </div>
+                      {/* Бейдж статуса / кнопка действия */}
+                      <div className="relative ml-2 shrink-0">
+                        <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-opacity duration-150 ${
+                          (task.status === 'TODO' || task.status === 'DOING') ? 'md:group-hover:opacity-0' : ''
+                        } ${STATUS_COLOR[task.status]}`}>
+                          {task.status === 'DOING' && (
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                          )}
+                          {STATUS_EMOJI[task.status]} <span className="hidden sm:inline">{STATUS_LABELS[task.status]}</span>
+                        </span>
+                        {task.status === 'TODO' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (myUserId && !task.assignee) {
+                                takeTaskMutation.mutate({ taskId: task.id, userId: myUserId });
+                              } else {
+                                changeStatusMutation.mutate({ taskId: task.id, status: 'DOING' });
+                              }
+                            }}
+                            className="absolute inset-0 hidden md:flex items-center justify-center px-2 py-0.5 rounded-full text-xs border border-blue-300 bg-blue-50 text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap hover:bg-blue-100"
+                          >{myUserId && !task.assignee ? '🙋 Взять' : '▶ В работу'}</button>
+                        )}
+                        {task.status === 'DOING' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); changeStatusMutation.mutate({ taskId: task.id, status: 'DONE' }); }}
+                            className="absolute inset-0 hidden md:flex items-center justify-center px-2 py-0.5 rounded-full text-xs border border-green-300 bg-green-50 text-green-700 opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap hover:bg-green-100"
+                          >✓ Готово</button>
+                        )}
+                      </div>
+                    </div>
+                    <h3 className="font-semibold text-sm leading-tight mb-1">{task.title}</h3>
+                    {task.description && (
+                      <p className="text-xs text-gray-500 line-clamp-2 mb-1.5">{task.description}</p>
                     )}
-                    {task.assignee && (
-                      <div className="text-xs text-gray-500">👤 {task.assignee.display_name}</div>
-                    )}
+                    <div className="flex justify-between items-center mt-1">
+                      {task.assignee
+                        ? <div className="text-xs text-gray-500">👤 {task.assignee.display_name}</div>
+                        : <div />
+                      }
+                      <div className="text-xs text-gray-400">{timeAgo(task.created_at)}</div>
+                    </div>
                   </div>
                 );
               })}
@@ -489,18 +618,26 @@ function TaskModal({ task, onClose, users, projects, changeStatusMutation, assig
     setDescription(task.description || '');
   }, [task]);
 
+  const handleSave = () => {
+    updateTaskMutation.mutate(
+      { id: task.id, data: { title, description } },
+      { onSuccess: () => setIsEditing(false) }
+    );
+  };
+
   return (
     <Modal onClose={onClose}>
       <div className="mb-4">
         <span className={`inline-block px-2 py-1 rounded-full text-xs border mb-2 ${STATUS_COLOR[task.status]}`}>
           {STATUS_EMOJI[task.status]} {STATUS_LABELS[task.status]}
         </span>
-        
+
         {isEditing ? (
           <div className="space-y-2 mb-2">
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSave(); } }}
               className="w-full px-3 py-2 border rounded-lg font-bold text-sm sm:text-base"
             />
             <textarea
@@ -511,16 +648,7 @@ function TaskModal({ task, onClose, users, projects, changeStatusMutation, assig
             />
             <div className="flex gap-2">
               <button
-                onClick={() => {
-                  updateTaskMutation.mutate(
-                    { id: task.id, data: { title, description } },
-                    { 
-                      onSuccess: () => {
-                        setIsEditing(false);
-                      }
-                    }
-                  );
-                }}
+                onClick={handleSave}
                 className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
               >Сохранить</button>
               <button
@@ -536,10 +664,19 @@ function TaskModal({ task, onClose, users, projects, changeStatusMutation, assig
         ) : (
           <>
             <h2 className="text-lg sm:text-xl font-bold">#{task.id} {task.title}</h2>
-            <button
-              onClick={() => setIsEditing(true)}
-              className="text-xs text-blue-600 hover:underline mt-1"
-            >Редактировать</button>
+            <div className="flex items-center gap-3 mt-1 flex-wrap">
+              <button
+                onClick={() => setIsEditing(true)}
+                className="text-xs text-blue-600 hover:underline"
+              >Редактировать</button>
+              <span className="text-xs text-gray-400">Создана {formatDatetime(task.created_at)}</span>
+              {task.started_at && (
+                <span className="text-xs text-blue-400">▶ {formatDatetime(task.started_at)}</span>
+              )}
+              {task.completed_at && (
+                <span className="text-xs text-green-500">✓ {formatDatetime(task.completed_at)}</span>
+              )}
+            </div>
             {task.description && <p className="text-sm text-gray-600 mt-2">{task.description}</p>}
           </>
         )}
@@ -626,6 +763,12 @@ function ProjectModal({ project, onClose, updateProjectMutation, setConfirmDelet
   const [description, setDescription] = useState(project.description || '');
   const [emoji, setEmoji] = useState(project.emoji || '📁');
 
+  const handleSave = () => {
+    if (name.trim()) {
+      updateProjectMutation.mutate({ id: project.id, data: { name, description, emoji } });
+    }
+  };
+
   return (
     <Modal onClose={onClose}>
       <h2 className="text-lg sm:text-xl font-bold mb-4">Редактировать</h2>
@@ -640,6 +783,7 @@ function ProjectModal({ project, onClose, updateProjectMutation, setConfirmDelet
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSave(); } }}
           placeholder="Название"
           className="w-full px-3 py-2 border rounded-lg text-sm"
         />
@@ -654,7 +798,7 @@ function ProjectModal({ project, onClose, updateProjectMutation, setConfirmDelet
       <div className="flex gap-2">
         <button onClick={onClose} className="flex-1 py-2 bg-gray-100 rounded-lg text-sm">Отмена</button>
         <button
-          onClick={() => updateProjectMutation.mutate({ id: project.id, data: { name, description, emoji } })}
+          onClick={handleSave}
           className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm"
         >Сохранить</button>
         <button
@@ -708,6 +852,7 @@ function NewTaskModal({ onClose, projects, createTaskMutation }: any) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [projectId, setProjectId] = useState('');
+  const descRef = React.useRef<HTMLTextAreaElement>(null);
 
   return (
     <Modal onClose={onClose}>
@@ -716,6 +861,7 @@ function NewTaskModal({ onClose, projects, createTaskMutation }: any) {
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); descRef.current?.focus(); } }}
           placeholder="Название"
           className="w-full px-3 py-2 border rounded-lg text-sm"
           autoFocus
@@ -757,6 +903,12 @@ function NewProjectModal({ onClose, createProjectMutation }: any) {
   const [description, setDescription] = useState('');
   const [emoji, setEmoji] = useState('📁');
 
+  const handleCreate = () => {
+    if (name.trim()) {
+      createProjectMutation.mutate({ name, description, emoji });
+    }
+  };
+
   return (
     <Modal onClose={onClose}>
       <h2 className="text-lg sm:text-xl font-bold mb-4">Новый проект</h2>
@@ -771,6 +923,7 @@ function NewProjectModal({ onClose, createProjectMutation }: any) {
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreate(); } }}
           placeholder="Название"
           className="w-full px-3 py-2 border rounded-lg text-sm"
           autoFocus
@@ -786,11 +939,7 @@ function NewProjectModal({ onClose, createProjectMutation }: any) {
       <div className="flex gap-2">
         <button onClick={onClose} className="flex-1 py-2 bg-gray-100 rounded-lg text-sm">Отмена</button>
         <button
-          onClick={() => {
-            if (name.trim()) {
-              createProjectMutation.mutate({ name, description, emoji });
-            }
-          }}
+          onClick={handleCreate}
           className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm"
         >Создать</button>
       </div>
@@ -842,6 +991,7 @@ function ConfirmDeleteModal({ confirm, onClose, deleteTaskMutation, deleteProjec
     if (confirm.type === 'meeting') deleteMeetingMutation.mutate(confirm.id);
   };
 
+
   return (
     <Modal onClose={onClose}>
       <h2 className="text-base sm:text-lg font-bold mb-4">Подтвердите удаление</h2>
@@ -861,9 +1011,26 @@ function ConfirmDeleteModal({ confirm, onClose, deleteTaskMutation, deleteProjec
 
 // Base Modal Component
 function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  // Блокируем прокрутку body при открытии модалки
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
+  // ESC закрывает модалку
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 overflow-y-auto"
       onClick={onClose}
     >
       <div

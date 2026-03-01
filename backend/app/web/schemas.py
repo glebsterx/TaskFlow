@@ -32,6 +32,8 @@ class TaskResponse(BaseModel):
     due_date: Optional[datetime]
     created_at: datetime
     updated_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     
     # Project
     project_id: Optional[int] = None
